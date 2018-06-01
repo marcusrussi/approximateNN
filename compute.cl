@@ -122,46 +122,51 @@ __kernel void apply_walsh(const size_t lheight,
 // points: points[x][z] contains proper coordinate.
 // diff_results: Contains results.
 // If which is n by k, points is n by d,
-// diff_results is n by k by d,
-// Θ(1) depth, Θ(nkd) work,
-// compute_diffs_squared(d, k, n, which, points, diff_results)(n, k, d);
+// diff_results is n by (k - s) by d,
+// Θ(1) depth, Θ(n(k-s)d) work,
+// compute_diffs_squared(d, k, n, s, which, points, diff_results)(n, k-s, d);
 __kernel void compute_diffs_squared(const size_t dims,
 				    const size_t count,
 				    const size_t npts,
+				    const size_t skip,
 				    __global const size_t *which,
 				    __global const double *points,
 				    __global double *diff_results) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
   int c;
-  z *= c = npts != which[x * count + y];
-  double d = points[x * dims + z] - points[which[x * count + y] * dims + z];
-  diff_results[(x * count + y) * dims + z] = d * d + (1.0 / c - 1);
+  z *= c = npts > which[x * count + y + skip];
+  double d = points[x * dims + z] -
+    points[which[x * count + y + skip] * dims + z];
+  diff_results[(x * (count - skip) + y) * dims + z] = d * d + (1.0 / c - 1);
   // if out of range, infinite.
 }
 
-// If mat is n by k by d, out is n by k,
-// Θ(lg d) depth, Θ(nk lg d) work,
-// add_cols(d, mat, out)(nk, d / 2)
+// If mat is n by (k - s) by d, out is n by k,
+// Θ(lg d) depth, Θ(n(k-s) lg d) work,
+// add_cols(d, k, s, mat, out)(n, k - s, d / 2)
 __kernel void add_cols(const size_t height,
+		       const size_t k,
+		       const size_t skip,
 		       __global double *mat,
 		       __global double *out) {
-  size_t x = get_global_id(0), y = get_global_id(1);
-  mat[x * height + y] += mat[x * height + y + height / 2] +
-    as_double(-(!y & height & 1) &
-	      as_ulong(mat[x * height + y + height / 2 + 1]));
+  size_t j = k - skip;
+  size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
+  mat[(x * j + y) * height + z] += mat[(x * j + y) * height + z + height / 2] +
+    as_double(-(!z & height & 1) &
+	      as_ulong(mat[(x * j + y) * height + z + height / 2 + 1]));
   for(size_t s = height >> 2, os = (height>>1)&1; s > 0; os = s & 1, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
-    mat[x * height + y] +=
-      as_double((y < s) & as_ulong(mat[x * height + y + s])) +
-      as_double(-(!y & os) & as_ulong(mat[x * height + y + s * 2 + 1]));
+    mat[(x * j + y) * height + z] +=
+      as_double((z < s) & as_ulong(mat[(x * j + y) * height + z + s])) +
+      as_double(-(!y & os) & as_ulong(mat[(x*j + y)*height + z + s * 2 + 1]));
   }
-  if(!y)
-    out[x] = mat[x * height];
+  if(!z)
+    out[x * k + y + skip] = mat[(x * j + y) * height];
 }
 
 // If order and along are n by k,
 // Θ((lg k)^2) depth, Θ(nk (lg k)^2) work,
-// sort_two(k, along, order)(n, 1 << ceil(lg(k)));
+// sort_two(k, along, order)(n, 1 << ceil(lg(k) - 1);
 __kernel void sort_two(const size_t count,
 		       __global size_t *along,
 		       __global double *order) {
@@ -248,3 +253,33 @@ __kernel void select_adjacents(const size_t height,
     curlist += count;
   }
 }
+
+// If neighbors is n by k, after is n by k * (k + 1),
+// Θ(1) depth, Θ(nk^2) work,
+// supercharge(k, neighbors, after)(n, k, k);
+__kernel void supercharge(const size_t k,
+			  __global const size_t *neighbors,
+			  __global size_t *after) {
+  size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
+  after[(x * k + y) * k + k + z]
+    = neighbors[neighbors[x * k + y] * k + z];
+}
+
+/* Supercharging is accomplished by the following steps:
+nedge = allocate<size_t>(n * k * (k + 1));
+ndists = allocate<double>(n * k * (k + 1));
+supercharge(k, edge, nedge)(n, k, k);
+copy_some_ints(k, k * (k + 1), 0, edge, nedge)(n, k);
+copy_some_floats(k, k * (k + 1), 0, dists, ndists)(n, k);
+diffs = allocate<double>(n * k * k);
+compute_diffs_squared(d, k * (k + 1), n, k, edge, points, diffs)(n, k * k, d);
+add_cols(d, k * (k + 1), k, diffs, dists)(n, k * k, d / 2);
+deallocate(diffs);
+sort_two(k * (k + 1), nedge, ndists)(n, 1 << ceil(lg(k * (k + 1)) - 1));
+rdups(k * (k + 1), nedge, ndists)(n, k * (k + 1) - 1);
+sort_two(k * (k + 1), nedge, ndists)(n, 1 << ceil(lg(k * (k + 1)) - 1));
+copy_some_ints(k * (k + 1), k, 0, nedge, edge)(n, k);
+copy_some_floats(k * (k + 1), k, 0, ndists, dists)(n, k);
+free(nedge);
+free(ndists);
+*/
