@@ -124,15 +124,19 @@ __kernel void apply_walsh(const size_t lheight,
 // If which is n by k, points is n by d,
 // diff_results is n by k by d,
 // Θ(1) depth, Θ(nkd) work,
-// compute_diffs_squared(d, k, which, points, diff_results)(n, k, d);
+// compute_diffs_squared(d, k, n, which, points, diff_results)(n, k, d);
 __kernel void compute_diffs_squared(const size_t dims,
 				    const size_t count,
+				    const size_t npts,
 				    __global const size_t *which,
 				    __global const double *points,
 				    __global double *diff_results) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
+  int c;
+  z *= c = npts != which[x * count + y];
   double d = points[x * dims + z] - points[which[x * count + y] * dims + z];
-  diff_results[(x * count + y) * dims + z] = d * d;
+  diff_results[(x * count + y) * dims + z] = d * d + (1.0 / c - 1);
+  // if out of range, infinite.
 }
 
 // If mat is n by k by d, out is n by k,
@@ -189,7 +193,7 @@ __kernel void rdups(const size_t count,
 		    __global const size_t *along,
 		    __global double *order) {
   size_t x = get_global_id(0) * count, y = get_global_id(1);
-  order[x + y] += 1.0 / (along[x + y] != along[x + y + 1]);
+  order[x + y] += 1.0 / (along[x + y] != along[x + y + 1]) - 1;
 }
 
 // Copies column heads.
@@ -216,4 +220,31 @@ __kernel void copy_some_floats(const size_t height_pre,
 			       __global double *to) {
   size_t x = get_global_id(0), y = get_global_id(1);
   to[x * height_post + start_post + y] = from[x * height_pre + y];
+}
+
+// Note: long is the same length as double, we're doing bit tricks here!
+// This is post-rotation.
+// Is there a faster way?
+// Let's hope, otherwise the total is Ω(n) depth.
+
+// If points is n by d, placement is n by (k + 1),
+// Θ(nd) depth, Θ(dn^2) work,
+// select_adjacents(d, n, k, points, placement)(n)
+
+__kernel void select_adjacents(const size_t height,
+			       const size_t length,
+			       const size_t allowed,
+			       __global const long *points,
+			       __global size_t *placement) {
+  size_t x = get_global_id(0);
+  size_t curlist = 0;
+  for(size_t curpt = 0; curpt < length; curpt++) {
+    int count = 0;
+    for(size_t cury = 0; cury < height; cury++)
+      count +=
+	(points[x * height + cury] ^ points[curpt * height + cury]) >> 63;
+    count = (count < 2) & (curpt != x) & (curlist != allowed);
+    placement[x * (allowed + 1) + curlist] = curpt;
+    curlist += count;
+  }
 }
