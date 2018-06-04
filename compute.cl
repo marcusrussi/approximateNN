@@ -46,9 +46,9 @@ __kernel void subtract_off(const size_t height,
 // Θ(1) depth, Θ(np) work,
 // apply_rotation(h, i, j, a, m)(n, p);
 __kernel void apply_rotation(const size_t height,
-			     const size_t *i, // first coordinate
-			     const size_t *j, // second coordinate
-			     const double *ang,
+			     __global const size_t *i, // first coordinate
+			     __global const size_t *j, // second coordinate
+			     __global const double *ang,
 			     __global double *a) {
   size_t x = get_global_id(0) * height, y = get_global_id(1);
   size_t k = i[y], l = j[y];
@@ -78,7 +78,21 @@ __kernel void apply_permutation(const size_t height_pre,
     as_double(p & as_ulong(a[x * height_pre + perm[y]]));
 }
 
-// If perm is size e, inv_p is size d,
+// Undoes apply_permutation.
+__kernel void apply_perm_inv(const size_t height_pre,
+			     const size_t height_post,
+			     const size_t garbage,
+			     __global const size_t *perm,
+			     __global const double *a,
+			     __global double *r) {
+  size_t x = get_global_id(0), y = get_global_id(1);
+  ulong p = -(ulong)(perm[y] < height_post);
+  size_t z = (x * height_post + perm[y]) & p;
+  z |= ~p & garbage;
+  r[z] = a[x * height_pre + y];
+}
+
+// If perm is size e, inv_p is size d + 1,
 // Θ(1) depth, Θ(e) work,
 // invert_perm(d, perm, inv_p)(e);
 __kernel void invert_perm(const size_t length,
@@ -91,7 +105,7 @@ __kernel void invert_perm(const size_t length,
   inv_p[t] = x;
 }
 
-// a is source, b is target.
+// a is source and target, b is workspace..
 // Self-inverse.
 // If a and b are size n by 1 << l,
 // Θ(l) depth, Θ(nl 2^l) work,
@@ -110,10 +124,8 @@ __kernel void apply_walsh(const size_t lheight,
 	+ sgn * a[(x << lheight) + (y | s)];
     barrier(CLK_GLOBAL_MEM_FENCE);
   }
-  if(lheight & 1)
-    b[(x << lheight) + y] = a[(x << lheight) + y];
-  else
-    b[(x << lheight) + y] *= rsqrt(2.0);
+  if(~lheight & 1)
+    b[(x << lheight) + y] = a[(x << lheight) + y] * rsqrt(2.0);
 }
 
 // dims: each point is d-dimensional
@@ -228,58 +240,42 @@ __kernel void copy_some_floats(const size_t height_pre,
 }
 
 // Note: long is the same length as double, we're doing bit tricks here!
-// This is post-rotation.
-// Is there a faster way?
-// Let's hope, otherwise the total is Ω(n) depth.
-
-// If points is n by d, placement is n by (k + 1),
-// Θ(nd) depth, Θ(dn^2) work,
-// select_adjacents(d, n, k, points, placement)(n)
-
-__kernel void select_adjacents(const size_t height,
-			       const size_t length,
-			       const size_t allowed,
-			       __global const long *points,
-			       __global size_t *placement) {
+// If points is n by d, results is length n,
+// Θ(d) depth, Θ(nd) work,
+// compute_signs(d, points, results)(n);
+__kernel void compute_signs(const size_t d,
+			    __global const long *points,
+			    __global size_t *results) {
   size_t x = get_global_id(0);
-  size_t curlist = 0;
-  for(size_t curpt = 0; curpt < length; curpt++) {
-    int count = 0;
-    for(size_t cury = 0; cury < height; cury++)
-      count +=
-	(points[x * height + cury] ^ points[curpt * height + cury]) >> 63;
-    count = (count < 2) & (curpt != x) & (curlist != allowed);
-    placement[x * (allowed + 1) + curlist] = curpt;
-    curlist += count;
-  }
+  size_t r = 0;
+  for(size_t i = 0; i < d; i++)
+    r = (r | (points[x * d + i] >> 63)) << 1;
+  results[x] = r;
 }
 
-// If neighbors is n by k, after is n by k * (k + 1),
+// If wi_rev is length n,
+// which_in is 2 ^ d by m,
+// which is n by m * (d + 1),
+// Θ(1) depth, Θ(nmd) work,
+// compute_which(d, m, wi_rev, which_in, which)(n, d, m);
+__kernel void compute_which(const size_t d,
+			    const size_t max,
+			    __global const size_t *wi_rev,
+			    __global const size_t *which_in,
+			    __global size_t *which) {
+  size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
+  which[(x * max + y) * (d + 1) + z] =
+    which_in[(wi_rev[x] ^ (!y << (y - 1))) * max + z];
+}
+
+// If neighbors is n by l, after is n by k * (k + 1),
 // Θ(1) depth, Θ(nk^2) work,
-// supercharge(k, neighbors, after)(n, k, k);
-__kernel void supercharge(const size_t k,
+// supercharge(l, k, neighbors, after)(n, k, k);
+__kernel void supercharge(const size_t l,
+			  const size_t k,
 			  __global const size_t *neighbors,
 			  __global size_t *after) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
   after[(x * k + y) * k + k + z]
-    = neighbors[neighbors[x * k + y] * k + z];
+    = neighbors[neighbors[x * l + y] * l + z];
 }
-
-/* Supercharging is accomplished by the following steps:
-nedge = allocate<size_t>(n * k * (k + 1));
-ndists = allocate<double>(n * k * (k + 1));
-supercharge(k, edge, nedge)(n, k, k);
-copy_some_ints(k, k * (k + 1), 0, edge, nedge)(n, k);
-copy_some_floats(k, k * (k + 1), 0, dists, ndists)(n, k);
-diffs = allocate<double>(n * k * k);
-compute_diffs_squared(d, k * (k + 1), n, k, edge, points, diffs)(n, k * k, d);
-add_cols(d, k * (k + 1), k, diffs, dists)(n, k * k, d / 2);
-deallocate(diffs);
-sort_two(k * (k + 1), nedge, ndists)(n, 1 << ceil(lg(k * (k + 1)) - 1));
-rdups(k * (k + 1), nedge, ndists)(n, k * (k + 1) - 1);
-sort_two(k * (k + 1), nedge, ndists)(n, 1 << ceil(lg(k * (k + 1)) - 1));
-copy_some_ints(k * (k + 1), k, 0, nedge, edge)(n, k);
-copy_some_floats(k * (k + 1), k, 0, ndists, dists)(n, k);
-free(nedge);
-free(ndists);
-*/

@@ -1,0 +1,230 @@
+Starting point:
+We have an array, points, that is n by d_long.
+
+d_max = 1 << ceil(lg(d_long));
+d_short = ceil(lg(n / k));
+row_sums = alloc<double>((n/2) * d_long);
+a = gpu_queue(NULL, add_rows(d_long, n, points, row_sums), n/2, d_long);
+b = gpu_queue({a, gpu_nada}, divide_by_length(n, row_sums), d_long);
+c = gpu_queue({b, gpu_nada}, subtract_off(d_long, points, row_sums),
+              n, d_long);
+gpu_wait(c);
+if(save) {
+    save->row_sums = alloc<double>(d_long);
+    memcpy(save->row_sums, row_sums, sizeof(double) * d_long);
+    save->which_par = alloc<size_t *>(tries);
+    save->par_maxes = alloc<size_t>(tries);
+    save->bases = alloc<double>(tries * d_short * d_long);
+}
+free(row_sums);
+pointers_out = alloc<size_t>(n * k * tries);
+dists_out = alloc<double>(n * k * tries);
+pfor(i = 0; i < tries; i++) {
+    rot_is_before = alloc<size_t>(rots_before * rot_len_before);
+    rot_js_before = alloc<size_t>(rots_before * rot_len_before);
+    rot_as_before = alloc<double>(rots_before * rot_len_before);
+    rot_is_after = alloc<size_t>(rots_after * rot_len_after);
+    rot_js_after = alloc<size_t>(rots_after * rot_len_after);
+    rot_as_after = alloc<double>(rots_after * rot_len_after);
+    perm_before = alloc<size_t>(d_max);
+    perm_after_i = alloc<size_t>(d_max);
+    for(j = 0; j < rots_before * rot_len_before; j += rot_len_before) {
+    	  rand_rot(rot_len_before, d_long, rot_is_before + j,
+	           rot_js_before + j, rot_as_before + j);
+    }
+    for(j = 0; j < rots_after * rot_len_after; j += rot_len_after) {
+    	  rand_rot(rot_len_after, d_max, rot_is_after + j,
+	           rot_js_after + j, rot_as_after + j);
+    }
+    rand_perm(perm_before, d_long, d_max);
+    rand_perm(perm_after_i, d_long, d_max);
+    pc = alloc<double>(n * d_max);
+    pc2 = alloc<double>(n * d_max);
+    cpy = gpu_queue(NULL,
+              copy_some_floats(d_long, d_long, 0, points, pc), n, d_long);
+    rot_obs_b = alloc<gpu_thunk>(rots_before);
+    rot_obs_a = alloc<gpu_thunk>(rots_after);
+    for(j = 0; j < rots_before; j++)
+        rot_obs_b[j] = gpu_queue({j? rot_obs_b[j - 1] : cpy, gpu_nada},
+	    apply_rotation(d_long, rot_is_before + j * rot_len_before,
+	                   rot_js_before + j * rot_len_before,
+			   rot_as_before + j * rot_len_before, pc),
+	                n, rot_len_before);
+    permb = gpu_queue({rot_obs_b[rots_before - 1], gpu_nada},
+             apply_permutation(d_long, d_max, perm_before, pc, pc2), n, d_max);
+    wal = gpu_queue({permb, NULL},
+            apply_walsh(lg(d_max), pc2, pc), n, d_max);
+    for(j = 0; j < rots_after; j++)
+        rot_obs_a[j] = gpu_queue({j? rot_obs_a[j - 1] : wal, gpu_nada},
+	    apply_rotation(d_long, rot_is_after + j * rot_len_after,
+	                   rot_js_after + j * rot_len_after,
+			   rot_as_after + j * rot_len_after, pc2),
+	                n, rot_len_after);
+    perma = gpu_queue({rot_obs_a[rots_after - 1], gpu_nada},
+             apply_perm_inv(d_max, d_short, perm_after_i, n * d_short,
+	                    pc2, pc),
+	     n, d_max);
+    signs = alloc<size_t>(n);
+    sgns = gpu_queue({perma, gpu_nada},
+             compute_signs(d_short, pc, signs), n);
+    if(save) {
+        vecs = alloc<double>(d_short * d_long + 1);
+	vecs2 = alloc<double>(d_short * d_max);
+	for(j = 0; j < d_short; j++)
+	    for(l = 0; l < d_short; l++)
+	        vecs[j * d_short + l] = l == j;
+	iperma = gpu_queue(NULL,
+	           apply_permutation(d_short, d_max, perm_after_i,
+		                     vecs, vecs2),
+			d_short, d_max);
+	rot_obs_bi = alloc<gpu_thunk>(rots_before);
+	rot_obs_ai = alloc<gpu_thunk>(rots_after);
+	for(j = rots_after - 1; j >= 0; j--)
+            rot_obs_ai[j] = gpu_queue({rots_after - j > 1? rot_obs_ai[j + 1] :
+	                                                   iperma, gpu_nada},
+	        apply_rotation(d_long, rot_js_after + j * rot_len_after,
+	                       rot_is_after + j * rot_len_after,
+			       rot_as_after + j * rot_len_after, vecs2),
+	                    d_short, rot_len_after);
+	iwalsh = gpu_queue({rot_obs_ai[0], gpu_nada},
+	           apply_walsh(lg(d_max), vecs2, vecs), d_short, d_max);
+	ipermb = gpu_queue({iwalsh, gpu_nada},
+	           apply_perm_inv(d_max, d_long, perm_after_i,
+		           d_short * d_long,
+			   vecs2, vecs), d_short, d_max);
+	for(j = rots_before - 1; j >= 0; j--)
+            rot_obs_bi[j] = gpu_queue({rots_before - j > 1? rot_obs_bi[j + 1] :
+	                                                    iperma, NULL},
+	        apply_rotation(d_long, rot_js_before + j * rot_len_before,
+	                       rot_is_before + j * rot_len_before,
+			       rot_as_before + j * rot_len_before, vecs2),
+	                    d_short, rot_len_before);
+	save_vecs = gpu_queue({rot_obs_bi[0], gpu_nada},
+	         copy_some_floats(d_long, d_long, 0, vecs,
+		                  save->bases + i * d_short * d_long),
+			d_short, d_long);
+    }
+    gpu_wait(sgns);
+    free(pc);
+    free(pc2);
+    counts = alloc<size_t>(1 << d_short);
+    for(j = 0; j < 1 << d_short; j++)
+        counts[j] = 0;
+    for(j = 0; j < n; j++)
+	counts[signs[j]]++;
+    max = counts[0];
+    for(j = 1; j < 1 << d_short; j++)
+        if(max < counts[j])
+	    max = counts[j];
+    which = alloc<size_t>(max << d_short);
+    if(save) {
+        save->which_par[j] = &which;
+	save->par_maxes[j] = max;
+    }
+    for(j = 0; j < 1 << d_short; j++)
+	for(l = counts[j]; l < max; l++)
+	    which[j * max + l] = n;
+    for(j = 0; j < n; j++)
+        which[j * max + --counts[signs[j]]] = j;
+    which_d = alloc<size_t>((d_short + 1) * n * max);
+    dists = alloc<double>((d_short + 1) * n * max);
+    diffs = alloc<double>((d_short + 1) * n * d_long * max);
+    cw = gpu_queue(NULL,
+             compute_which(d_short, max, signs, which, which_d),
+	     n, d_short, max);
+    cds = gpu_queue({cw, gpu_nada},
+             compute_diffs_squared(d_long, (d_short + 1) * max, n, 0,
+	                           which_d, points, diffs),
+	     n, (d_short + 1) * max, d_long);
+    cdsts = gpu_queue({cds, gpu_nada},
+                add_cols(d_long, (d_short + 1) * max, 0, diffs, dists),
+		n, (d_short + 1) * max, d_long / 2);
+    srta = gpu_queue({cdsts, gpu_nada},
+               sort_two((d_short + 1) * max, which_d, dists),
+	       n, 1 << ceil(lg((d_short + 1) * max) - 1));
+    uniq = gpu_queue({srta, gpu_nada},
+               rdups((d_short + 1) * max, which_d, dists),
+	       n, (d_short + 1) * max - 1);
+    srtb = gpu_queue({uniq, gpu_nada},
+               sort_two((d_short + 1) * max, which_d, dists),
+	       n, 1 << ceil(lg((d_short + 1) * max) - 1));
+    cpi = gpu_queue({srtb, gpu_nada},
+               copy_some_ints((d_short + 1) * max, k * tries, k * j,
+	                      which_d, pointers_out),
+		n, k);
+    cpf = gpu_queue({srtb, gpu_nada},
+               copy_some_floats((d_short + 1) * max, k * tries, k * j,
+	                      dists, dists_out),
+		n, k);
+    gpu_wait(cpi);
+    gpu_wait(cpf);
+    if(save) {
+        gpu_wait(save_vecs);
+	free(vecs);
+	free(vecs2);
+	free(rot_obs_ai);
+	free(rot_obs_bi);
+    } else
+        free(which);
+    free(rot_is_before);
+    free(rot_js_before);
+    free(rot_as_before);
+    free(rot_is_after);
+    free(rot_js_after);
+    free(rot_as_after);
+    free(perm_before);
+    free(perm_after_i);
+    free(rot_obs_a);
+    free(rot_obs_b);
+    free(signs);
+    free(counts);
+    free(which_d);
+    free(dists);
+    free(diffs);
+}
+srta = gpu_queue(NULL,
+           sort_two(k * tries, pointers_out, dists_out),
+	   n, 1 << ceil(lg(k * tries) - 1));
+uniqa = gpu_queue({srta, gpu_nada},
+	   rdups(k * tries, pointers_out, dists_out), n, k * tries - 1);
+srtb = gpu_queue({uniqa, gpu_nada},
+           sort_two(k * tries, pointers_out, dists_out),
+	   n, 1 << ceil(lg(k * tries) - 1);
+nedge = alloc<size_t>(n * k * (k + 1));
+ndists = alloc<double>(n * k * (k + 1));
+diffs = alloc<double>(n * k * k * d_long);
+sup = gpu_queue({srtb, gpu_nada},
+          supercharge(k * tries, k, pointers_out, nedge),
+	  n, k, k);
+csi = gpu_queue({srtb, gpu_nada},
+          copy_some_ints(k * tries, k * (k + 1), 0, pointers_out, nedge),
+	  n, k);
+csf = gpu_queue({srtb, gpu_nada},
+          copy_some_floats(k * tries, k * (k + 1), 0, dists_out, ndists),
+	  n, k);
+cds = gpu_queue({sup, gpu_nada},
+         compute_diffs_squared(d_long, k * (k + 1), n, k,
+	                       nedge, points, diffs),
+	 n, k * k, d_long);
+ac = gpu_queue({cds, gpu_nada},
+         add_cols(d, k * (k + 1), k, diffs, ndists),
+	 n, k * k, d / 2);
+srtc = gpu_queue({ac, csi, csf, gpu_nada},
+           sort_two(k * tries, nedge, ndists),
+	   n, 1 << ceil(lg(k * tries) - 1));
+uniqb = gpu_queue({srtc, gpu_nada},
+	   rdups(k * tries, nedge, ndists), n, k * tries - 1);
+srtd = gpu_queue({uniqb, gpu_nada},
+           sort_two(k * tries, nedge, ndists),
+	   n, 1 << ceil(lg(k * tries) - 1);
+fedges = alloc<size_t>(n * k);
+if(save)
+   save->graph = fedges;
+cbk = gpu_queue({srtd, gpu_nada},
+          copy_some_ints(k * (k + 1), k, 0, nedge, fedges), n, k);
+gpu_wait(cbk);
+free(nedge);
+free(ndists);
+free(diffs);
+free(pointers_out);
+free(dists_out);
