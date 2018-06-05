@@ -109,45 +109,78 @@ __kernel void invert_perm(const size_t length,
 // Self-inverse.
 // If a and b are size n by 1 << l,
 // Θ(l) depth, Θ(nl 2^l) work,
-// apply_walsh(l, a, b)(n, 1 << l);
+// apply_walsh(l, a, b)(n, 1 << (max(l - 3, 0)));
+// Note that we skip
 __kernel void apply_walsh(const size_t lheight,
 			  __global double *a,
 			  __global double *b) {
   size_t x = get_global_id(0), y = get_global_id(1);
+  double rsr = rsqrt(2.0);
+  switch(lheight) {
+  case 0:
+    return;
+  case 1:
+    double a1 = a[x << 1] + a[x << 1 | 1];
+    double a2 = a[x << 1] - a[x << 1 | 1];
+    a[x << 1] = a1 * rsr;
+    a[x << 1 | 1] = a2 * rsr;
+    return;
+  case 2:
+    for(int i = 0; i < 4; i++) {
+      b[x << 2 | i] = 0;
+      for(int j = 0; j < 4; j++) {
+	int k = i & j;
+	b[x << 2 | i] += a[x << 2 | j] * (1 - ((k ^ (k >> 1)) & 1) * 2);
+      }
+    }
+    for(int i = 0; i < 4; i++)
+      a[x << 2 | i] = b[x << 2 | i] / 2;
+    return;
+  default:
+  }
   for(size_t step = 0, s = 1; step < lheight; step++, s <<= 1) {
-    int sgn = 1 - (y >> (step - 1) & 2)
-    if(step & 1)
-      a[(x << lheight) + y] = (b[(x << lheight) + (y & ~s)]
-			       + sgn * b[(x << lheight) + (y | s)]) / 2;
-    else
-      b[(x << lheight) + y] = a[(x << lheight) + (y & ~s)]
-	+ sgn * a[(x << lheight) + (y | s)];
-    barrier(CLK_GLOBAL_MEM_FENCE);
+    for(int j = 0; j < 8; j++) {
+      size_t y1 = y << 3 | j;
+      int sgn = 1 - (y1 >> (step - 1) & 2)
+	if(step & 1)
+	  a[(x << lheight) + y1] = (b[(x << lheight) + (y1 & ~s)]
+				   + sgn * b[(x << lheight) + (y1 | s)]) / 2;
+	else
+	  b[(x << lheight) + y1] = a[(x << lheight) + (y1 & ~s)]
+	    + sgn * a[(x << lheight) + (y1 | s)];
+    }
+      barrier(CLK_GLOBAL_MEM_FENCE);
   }
   if(~lheight & 1)
-    b[(x << lheight) + y] = a[(x << lheight) + y] * rsqrt(2.0);
+    for(int j = 0; j < 8; j++) {
+      size_t y1 = y << 3 | j;
+      b[(x << lheight) + y1] = a[(x << lheight) + y1] * rsr;
+    }
 }
 
 // dims: each point is d-dimensional
 // count: how many points do we compute distances to (k)
 // which: From x, compute distances to which[x][y].
 // points: points[x][z] contains proper coordinate.
+// pointsa: Same as points, but might be shorter.
 // diff_results: Contains results.
-// If which is n by k, points is n by d,
+// If which is n by k, points is m by d,
+// pointsa is n by d,
 // diff_results is n by (k - s) by d,
 // Θ(1) depth, Θ(n(k-s)d) work,
-// compute_diffs_squared(d, k, n, s, which, points, diff_results)(n, k-s, d);
+// compute_diffs_squared(d, k, m, s, which, points, diff_results)(n, k-s, d);
 __kernel void compute_diffs_squared(const size_t dims,
 				    const size_t count,
 				    const size_t npts,
 				    const size_t skip,
 				    __global const size_t *which,
+				    __global const double *pointsa
 				    __global const double *points,
 				    __global double *diff_results) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
   int c;
   z *= c = npts > which[x * count + y + skip];
-  double d = points[x * dims + z] -
+  double d = pointsa[x * dims + z] -
     points[which[x * count + y + skip] * dims + z];
   diff_results[(x * (count - skip) + y) * dims + z] = d * d + (1.0 / c - 1);
   // if out of range, infinite.
@@ -178,26 +211,33 @@ __kernel void add_cols(const size_t height,
 
 // If order and along are n by k,
 // Θ((lg k)^2) depth, Θ(nk (lg k)^2) work,
-// sort_two(k, along, order)(n, 1 << ceil(lg(k) - 1);
+// sort_two(k, n, along, order)(n, 1 << max(ceil(lg(k) - 4), 0));
 __kernel void sort_two(const size_t count,
+		       const size_t n,
 		       __global size_t *along,
 		       __global double *order) {
   size_t x = get_global_id(0) * count, y = get_global_id(1);
   for(int step = 0; (count - 1) >> step; step++)
     for(int sstep = step; sstep >= 0; sstep--)  {
-      size_t y_high = (y >> sstep) << sstep;
-      size_t y_low = y ^ y_high;
-      size_t y_a = (y_high << 1) | y_low;
-      if(sstep == step)
-	y_low = (1 << sstep) - y_low;
-      size_t y_b = y_high << 1 | 1 << sstep | y_low;
-      ulong doswap = -(y_b < count) * (order[x + y_a] > order[x + y_b]);
-      ulong a = as_ulong(order[x + y_a]), b = as_ulong(order[x + y_b]);
-      a ^= b, b ^= a & doswap, a ^= b;
-      order[x + y_a] = as_double(a), order[x + y_b] = as_double(b);
-      a = along[x + y_a], b = along[x + y_b];
-      a ^= b, b ^= a & doswap, a ^= b;
-      along[x + y_a] = a, along[x + y_b] = b;
+      for(int i = 0; i < 8; i++) {
+	size_t y1 = y << 3 | i;
+	size_t y_high = (y1 >> sstep) << sstep;
+	size_t y_low = y1 ^ y_high;
+	size_t y_a = (y_high << 1) | y_low;
+	if(sstep == step)
+	  y_low = (1 << sstep) - y_low;
+	size_t y_b = y_high << 1 | 1 << sstep | y_low;
+	ulong doswap = -(order[x + y_a] > order[x + y_b]);
+	ulong trash = -(count > y_a);
+	size_t alpha = trash & (x + y_a) | ~trash & (n * count);
+	size_t beta = trash & (x + y_b) | ~trash & (n * count);
+	ulong a = as_ulong(order[x + y_a]), b = as_ulong(order[x + y_b]);
+	a ^= b, b ^= a & doswap, a ^= b;
+	order[alpha] = as_double(a), order[beta] = as_double(b);
+	a = along[x + y_a], b = along[x + y_b];
+	a ^= b, b ^= a & doswap, a ^= b;
+	along[alpha] = a, along[beta] = b;
+      }
       barrier(CLK_GLOBAL_MEM_FENCE);
     }
 }
@@ -257,25 +297,40 @@ __kernel void compute_signs(const size_t d,
 // which_in is 2 ^ d by m,
 // which is n by m * (d + 1),
 // Θ(1) depth, Θ(nmd) work,
-// compute_which(d, m, wi_rev, which_in, which)(n, d, m);
+// compute_which(d, m, wi_rev, which_in, which)(n, d + 1, m);
 __kernel void compute_which(const size_t d,
 			    const size_t max,
 			    __global const size_t *wi_rev,
 			    __global const size_t *which_in,
 			    __global size_t *which) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  which[(x * max + y) * (d + 1) + z] =
+  which[(x * (d + 1) + y) * max + z] =
     which_in[(wi_rev[x] ^ (!y << (y - 1))) * max + z];
 }
 
-// If neighbors is n by l, after is n by k * (k + 1),
-// Θ(1) depth, Θ(nk^2) work,
-// supercharge(l, k, neighbors, after)(n, k, k);
-__kernel void supercharge(const size_t l,
+// If neighborsa is m by l,
+// neighbors is n by l, after is m by k * (k + 1),
+// Θ(1) depth, Θ(mk^2) work,
+// supercharge(n, l, k, neighborsa, neighbors, after)(m, k, k);
+__kernel void supercharge(const size_t n,
+			  const size_t l,
 			  const size_t k,
+			  __global const size_t *neighborsa,
 			  __global const size_t *neighbors,
 			  __global size_t *after) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
+  size_t w = -(size_t)(n > neighborsa[x * l + y]) ;
   after[(x * k + y) * k + k + z]
-    = neighbors[neighbors[x * l + y] * l + z];
+    = neighbors[(w & neighborsa[x * l + y]) * l + z] | (~w & n);
+}
+
+// If v is length d, p is n by d, o is n by d,
+// Θ(1) depth, Θ(nd) work,
+// prods(d, v, p, o)(n, d);
+__kernel void prods(const size_t d,
+		    __global const double *v,
+		    __global const double *p,
+		    __global double *o) {
+  size_t x = get_global_id(0) * d, y = get_global_id(1);
+  o[x + y] = v[y] * p[x + y];
 }
