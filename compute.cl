@@ -1,13 +1,25 @@
 // When I write func(params)(x, y = 1, z = 1),
 // I mean, call func(params), and have one thread for every
 // i, j, k that is possible where 0 <= i < x, 0 <= j < y, 0 <= k < z.
+// When I write func(params)(x, y = 1, z = 1)(c),
+// I mean the same, but coordinate c must be kept together.
+
+// Add rows:
+// if(n/2 <= max_conc_threads)
+//   add_rows(d, n, a, r)(n/2, d)(0);
+// else {
+//   add_rows_step_0(d, n, a, r)(n/2, d);
+//   for(m = n >> 1; m; m >>= 1)
+//     add_rows_step_n(d, m, r)(m/2, d);
+// }
+// in second branch, work is only Θ(nd).
 
 // a is supposed to have a length of l,
 // r of l/2.
 // End result is that row sums of a are stored in r.
 // If a is n by d, r is (n/2 by d),
-// Θ(lg n) depth, Θ(d lg n) work,
-// add_rows(d, n, a, r)(n/2, d);
+// Θ(lg n) depth, Θ(nd lg n) work,
+// add_rows(d, n, a, r)(n/2, d)(0);
 __kernel void add_rows(const size_t height, const size_t len,
 		    __global const double *a,
 		    __global double *r) {
@@ -21,6 +33,29 @@ __kernel void add_rows(const size_t height, const size_t len,
       as_double(-(ulong)(x < s) & as_ulong(r[(x + s) * height + y])) +
       as_double(-(ulong)(!x & os) & as_ulong(r[(x + s + 1) * height + y]));
   }
+}
+
+// If a is n by d, r is n/2 by d,
+// Θ(1) depth, Θ(nd) work,
+// add_rows_step_0(d, n, a, r)(n/2, d);
+__kernel void add_rows_step_0(const size_t height, const size_t len,
+			      __global const double *a,
+			      __global double *r) {
+  size_t x = get_global_id(0), y = get_global_id(1);
+  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] +
+    as_double(-(ulong)(!x & len & 1) &
+	      as_ulong(a[(x + len / 2 + 1) * height + y]));
+}
+
+// If r is n by d,
+// Θ(1) depth, Θ(nd) work,
+// add_rows_step_n(d, n, r)(n/2, d);
+__kernel void add_rows_step_n(const size_t height, const size_t len,
+			      __global double *r) {
+  size_t x = get_global_id(0), y = get_global_id(1);
+    r[x * height + y] += r[(x + len / 2) * height + y] +
+    as_double(-(ulong)(!x & len & 1) &
+	      as_ulong(r[(x + len / 2 + 1) * height + y]));
 }
 
 // If r is length d,
@@ -105,17 +140,23 @@ __kernel void invert_perm(const size_t length,
   inv_p[t] = x;
 }
 
-// a is source and target, b is workspace..
+__global const double rsr = rsqrt(2.0);
+
+// Walsh transform:
+// if(1 << (l - 4) <= max_conc_threads)
+//   apply_walsh(l, a)(n, 1 << max(l - 4, 0))(1);
+// else
+//   for(k = 0; k < l; k++)
+//     apply_walsh_step(l, k, a)(n, 1 << (l - 4));
+
+// a is source and target.
 // Self-inverse.
-// If a and b are size n by 1 << l,
+// If a is size n by 1 << l,
 // Θ(l) depth, Θ(nl 2^l) work,
-// apply_walsh(l, a, b)(n, 1 << (max(l - 3, 0)));
-// Note that we skip
+// apply_walsh(l, a)(n, 1 << max(l - 4, 0));
 __kernel void apply_walsh(const size_t lheight,
-			  __global double *a,
-			  __global double *b) {
+			  __global double *a) {
   size_t x = get_global_id(0), y = get_global_id(1);
-  double rsr = rsqrt(2.0);
   switch(lheight) {
   case 0:
     return;
@@ -126,36 +167,79 @@ __kernel void apply_walsh(const size_t lheight,
     a[x << 1 | 1] = a2 * rsr;
     return;
   case 2:
+    double b[4];
     for(int i = 0; i < 4; i++) {
-      b[x << 2 | i] = 0;
+      b[i] = 0;
       for(int j = 0; j < 4; j++) {
 	int k = i & j;
-	b[x << 2 | i] += a[x << 2 | j] * (1 - ((k ^ (k >> 1)) & 1) * 2);
+	b[i] += a[x << 2 | j] * (1 - ((k ^ (k >> 1)) & 1) * 2);
       }
     }
     for(int i = 0; i < 4; i++)
-      a[x << 2 | i] = b[x << 2 | i] / 2;
+      a[x << 2 | i] = b[i] / 2;
     return;
   default:
   }
   for(size_t step = 0, s = 1; step < lheight; step++, s <<= 1) {
-    for(int j = 0; j < 8; j++) {
-      size_t y1 = y << 3 | j;
-      int sgn = 1 - (y1 >> (step - 1) & 2)
-	if(step & 1)
-	  a[(x << lheight) + y1] = (b[(x << lheight) + (y1 & ~s)]
-				   + sgn * b[(x << lheight) + (y1 | s)]) / 2;
-	else
-	  b[(x << lheight) + y1] = a[(x << lheight) + (y1 & ~s)]
-	    + sgn * a[(x << lheight) + (y1 | s)];
-    }
+    if(step & 1)
+      for(int j = 0; j < 8; j++) {
+	size_t y1 = y << 3 | j;
+	size_t yh = (y1 >> step) << step;
+	size_t yl = y1 ^ yh;
+	size_t ya = yh << 1 | yl;
+	double alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
+	a[x << lheight | ya] = (alpha + beta) / 2;
+	a[x << lheight | ya | s] = (alpha - beta) / 2;
+      }
+    else
+      for(int j = 0; j < 8; j++) {
+	size_t y1 = y << 3 | j;
+	size_t yh = (y1 >> step) << step;
+	size_t yl = y1 ^ yh;
+	size_t ya = yh << 1 | yl;
+	double alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
+	a[x << lheight | ya] = alpha + beta;
+	a[x << lheight | ya | s] = alpha - beta;
+      }
       barrier(CLK_GLOBAL_MEM_FENCE);
   }
-  if(~lheight & 1)
-    for(int j = 0; j < 8; j++) {
+  if(lheight & 1)
+    for(int j = 0; j < 16; j++)
+      a[x << lheight | y << 4 | j] *= rsr;
+}
+
+// If a is n by 1 << l,
+// Θ(1) depth, Θ(n * 2^l) work,
+// apply_walsh_step(l, s, a)(n, 1 << (l - 4));
+__kernel void apply_walsh_step(const size_t lheight,
+			       const size_t step,
+			       __global double *a) {
+  size_t x = get_global_id(0) << lheight, y = get_global_id(1);
+  if(!lheight)
+    return;
+  if(step & 1)
+    for(int j = 0; j < 8 && j < 1 << lheight; j++) {
       size_t y1 = y << 3 | j;
-      b[(x << lheight) + y1] = a[(x << lheight) + y1] * rsr;
+      size_t yh = (y1 >> step) << step;
+      size_t yl = y1 ^ yh;
+      size_t ca = x | yh << 1 | yl;
+      size_t cb = ca | 1 << step;
+      double alpha = a[ca], beta = a[cb];
+      a[ca] = (alpha + beta) / 2, a[cb] = (alpha - beta) / 2;
     }
+  else
+    for(int j = 0; j < 8 && j < 1 << lheight; j++) {
+      size_t y1 = y << 3 | j;
+      size_t yh = (y1 >> step) << step;
+      size_t yl = y1 ^ yh;
+      size_t ca = x | yh << 1 | yl;
+      size_t cb = ca | 1 << step;
+      double alpha = a[ca], beta = a[cb];
+      a[ca] = alpha + beta, a[cb] = alpha - beta;
+    }
+  if(step == 0 && lheight % 2)
+    for(int j = 0; j < 16 && j < 1 << lheight; j++)
+      a[x | y << 4 | j] *= rsr;
 }
 
 // dims: each point is d-dimensional
@@ -186,9 +270,20 @@ __kernel void compute_diffs_squared(const size_t dims,
   // if out of range, infinite.
 }
 
+// Add columns:
+// if(d/2 <= max_conc_threads)
+//   add_cols(d, k, s, mat, out)(n, k - s, d / 2)(2);
+// else {
+//   for(h = d; h >> 1; h >>= 1)
+//     add_cols_step(d, h, k, mat)(n, k - s, h / 2);
+//   add_cols_fin(d, k, s, mat, out)(n, k - s);
+// }
+// If the second branch is taken,
+// work is only Θ(nkd).
+
 // If mat is n by (k - s) by d, out is n by k,
-// Θ(lg d) depth, Θ(n(k-s) lg d) work,
-// add_cols(d, k, s, mat, out)(n, k - s, d / 2)
+// Θ(lg d) depth, Θ(n(k-s)d lg d) work,
+// add_cols(d, k, s, mat, out)(n, k - s, d / 2)(2);
 __kernel void add_cols(const size_t height,
 		       const size_t k,
 		       const size_t skip,
@@ -203,41 +298,88 @@ __kernel void add_cols(const size_t height,
     barrier(CLK_GLOBAL_MEM_FENCE);
     mat[(x * j + y) * height + z] +=
       as_double((z < s) & as_ulong(mat[(x * j + y) * height + z + s])) +
-      as_double(-(!y & os) & as_ulong(mat[(x*j + y)*height + z + s * 2 + 1]));
+      as_double(-(!z & os) & as_ulong(mat[(x * j + y) * height + s * 2]));
   }
-  if(!z)
-    out[x * k + y + skip] = mat[(x * j + y) * height];
+  out[x * k + y + skip] = mat[(x * j + y) * height];
 }
+
+// If mat is n by k by d,
+// Θ(1) depth, Θ(nkd) work,
+// add_cols_step(d, s, k, mat)(n, k, s / 2);
+__kernel void add_cols_step(const size_t height,
+			    const size_t s,
+			    const size_t k,
+			    __global double *mat) {
+  size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
+  mat[(x * k + y) * height + z] +=
+    mat[(x * k + y) * height + z + stepheight] +
+    as_double(-(!z & s) & as_ulong(mat[(x * k + y) * height + s - 1]));
+}
+
+// If mat is n by (k - s) by d,
+// out is n by k,
+// Θ(1) depth, Θ(n(k - s)) work,
+// add_cols_fin(d, k, s, mat, out)(n, k - s);
+__kernel void add_cols_fin(const size_t height,
+			   const size_t k,
+			   const size_t skip,
+			   __global const double *mat,
+			   __global double *out) {
+  size_t x = get_global_id(0), y = get_global_id(1);
+  out[x * k + y + skip] = mat[(x * (k - skip) + y) * height];
+}
+
+// Sorting:
+// nth = 1 << ceil(lg(k) - 4);
+// if(nth <= max_conc_threads)
+//   sort_two(k, n, along, order)(n, nth)(1);
+// else
+//   for(s = 0; (k - 1) >> s; s++)
+//     for(ss = s; ss >= 0; ss--)
+//       sort_two_step(k, n, s, ss, along, order)(n, nth);
+
+// If order and along are n by k,
+// Θ(1) depth, Θ(nk) work,
+// sort_two_step(k, n, s, ss, along, order)(n, 1 << ceil(lg(k) - 4));
+__kernel void sort_two_step(const size_t count,
+			    const size_t n,
+			    const int step,
+			    const int sstep,
+			    __global size_t *along,
+			    __global double *order) {
+  size_t x = get_global_id(0) * count, y = get_global_id(1);
+  for(int i = 0; i < 8; i++) {
+    size_t y1 = y << 3 | i;
+    size_t y_high = (y1 >> sstep) << sstep;
+    size_t y_low = y1 ^ y_high;
+    size_t y_a = (y_high << 1) | y_low;
+    if(sstep == step)
+      y_low = (1 << sstep) - y_low;
+    size_t y_b = y_high << 1 | 1 << sstep | y_low;
+    ulong doswap = -(order[x + y_a] > order[x + y_b]);
+    ulong trash = -(count > y_a);
+    size_t alpha = trash & (x + y_a) | ~trash & (n * count);
+    size_t beta = trash & (x + y_b) | ~trash & (n * count);
+    ulong a = as_ulong(order[x + y_a]), b = as_ulong(order[x + y_b]);
+    a ^= b, b ^= a & doswap, a ^= b;
+    order[alpha] = as_double(a), order[beta] = as_double(b);
+    a = along[x + y_a], b = along[x + y_b];
+    a ^= b, b ^= a & doswap, a ^= b;
+    along[alpha] = a, along[beta] = b;
+  }
+}
+
 
 // If order and along are n by k,
 // Θ((lg k)^2) depth, Θ(nk (lg k)^2) work,
-// sort_two(k, n, along, order)(n, 1 << max(ceil(lg(k) - 4), 0));
+// sort_two(k, n, along, order)(n, 1 << max(ceil(lg(k) - 4), 0))(1);
 __kernel void sort_two(const size_t count,
 		       const size_t n,
 		       __global size_t *along,
 		       __global double *order) {
-  size_t x = get_global_id(0) * count, y = get_global_id(1);
   for(int step = 0; (count - 1) >> step; step++)
     for(int sstep = step; sstep >= 0; sstep--)  {
-      for(int i = 0; i < 8; i++) {
-	size_t y1 = y << 3 | i;
-	size_t y_high = (y1 >> sstep) << sstep;
-	size_t y_low = y1 ^ y_high;
-	size_t y_a = (y_high << 1) | y_low;
-	if(sstep == step)
-	  y_low = (1 << sstep) - y_low;
-	size_t y_b = y_high << 1 | 1 << sstep | y_low;
-	ulong doswap = -(order[x + y_a] > order[x + y_b]);
-	ulong trash = -(count > y_a);
-	size_t alpha = trash & (x + y_a) | ~trash & (n * count);
-	size_t beta = trash & (x + y_b) | ~trash & (n * count);
-	ulong a = as_ulong(order[x + y_a]), b = as_ulong(order[x + y_b]);
-	a ^= b, b ^= a & doswap, a ^= b;
-	order[alpha] = as_double(a), order[beta] = as_double(b);
-	a = along[x + y_a], b = along[x + y_b];
-	a ^= b, b ^= a & doswap, a ^= b;
-	along[alpha] = a, along[beta] = b;
-      }
+      sort_two_step(count, n, step, sstep, along, order);
       barrier(CLK_GLOBAL_MEM_FENCE);
     }
 }
