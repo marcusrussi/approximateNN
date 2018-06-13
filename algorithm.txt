@@ -79,7 +79,7 @@ if(save) {
     save->n = n;
     save->k = k;
     save->d_short = d_short;
-    sace->d_long = d_long;
+    save->d_long = d_long;
     save->points = points;
     save->row_means = alloc<double>(d_long);
     memcpy(save->row_means, row_sums, sizeof(double) * d_long);

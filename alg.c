@@ -252,6 +252,11 @@ size_t *query(const save_t *save, size_t ycnt, double *y) {
   double *cprds = malloc(sizeof(double) * save->tries *
 			 save->d_short * save->d_long);
   double *dprds = malloc(sizeof(double) * save->tries * save->d_short);
+  {
+    double *y2 = malloc(sizeof(double) * save->d_long * ycnt);
+    memcpy(y2, y, sizeof(double) * save->d_long * ycnt);
+    y = y2;
+  }
   LOOP2(subtract_off(save->d_long, y, save->row_means), ycnt, save->d_long);
   LOOP3(prods(save->d_long, save->n, y, save->bases, cprds),
 	ycnt, save->tries * save->d_short, save->d_long);
@@ -322,6 +327,7 @@ size_t *query(const save_t *save, size_t ycnt, double *y) {
   LOOP3(compute_diffs_squared(save->d_long, save->k * (save->k + 1), save->n,
 			      save->k, ipts, y, save->points, diffs),
 	ycnt, save->k * save->k, save->d_long);
+  free(y);
   add_up_cols(save->d_long, save->k * (save->k + 1), save->k, ycnt,
 	      diffs, dpts);
   free(diffs);
@@ -335,4 +341,16 @@ size_t *query(const save_t *save, size_t ycnt, double *y) {
 	ycnt, save->k);
   free(ipts);
   return(results);
+}
+
+void free_save(save_t *save) {
+  for(int i = 0; i < save->tries; i++) {
+    free(save->which_par[i]);
+  }
+  free(save->which_par);
+  free(save->par_maxes);
+  free(save->graph);
+  free(save->points);
+  free(save->row_means);
+  free(save->bases);
 }
