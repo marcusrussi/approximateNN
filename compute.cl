@@ -24,14 +24,25 @@ __kernel void add_rows(const size_t height, const size_t len,
 		    __global const double *a,
 		    __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] +
-    as_double(-(ulong)((!x) & len & 1) &
-	      as_ulong(a[(x + len / 2 + 1) * height + y]));
+#ifndef ocl2c
+  double g = as_double(-(ulong)((!x) & len & 1) &
+	      as_ulong(a[(len - 1) * height + y]));
+#else
+  double g = !x && len % 2? g = a[(len - 1) * height + y] : 0;
+#endif
+  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;
   for(size_t s = len >> 2, os = (len>>1)&1; s > 0; os = s & 1, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
-    r[x * height + y] +=
-      as_double(-(ulong)(x < s) & as_ulong(r[(x + s) * height + y])) +
-      as_double(-(ulong)((!x) & os) & as_ulong(r[(x + s + 1) * height + y]));
+#ifndef ocl2c
+    g = as_double(-(ulong)(x < s) & as_ulong(r[(x + s) * height + y]));
+    double h = as_double(-(ulong)((!x) & os) &
+			 as_ulong(r[s * 2 * height + y]));
+#else
+    g = x < s? r[(x + s) * height + y] : 0;
+    double h = !x && os? r[s * 2 * height + y] : 0;
+#endif
+    r[x * height + y] += g + h;
+      
   }
 }
 
@@ -42,9 +53,14 @@ __kernel void add_rows_step_0(const size_t height, const size_t len,
 			      __global const double *a,
 			      __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] +
-    as_double(-(ulong)((!x) & len & 1) &
-	      as_ulong(a[(x + len / 2 + 1) * height + y]));
+#ifndef ocl2c
+  double g = as_double(-(ulong)((!x) & len & 1) &
+		       as_ulong(a[(len - 1) * height + y]));
+#else
+  double g = !x && len % 2? a[(len - 1) * height + y] : 0;
+#endif
+  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;
+    
 }
 
 // If r is n by d,
@@ -53,9 +69,13 @@ __kernel void add_rows_step_0(const size_t height, const size_t len,
 __kernel void add_rows_step_n(const size_t height, const size_t len,
 			      __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-    r[x * height + y] += r[(x + len / 2) * height + y] +
-      as_double(-(ulong)((!x) & len & 1) &
-	      as_ulong(r[(x + len / 2 + 1) * height + y]));
+#ifndef ocl2c
+  double g = as_double(-(ulong)((!x) & len & 1) &
+		       as_ulong(r[(len - 1) * height + y]));
+#else
+  double g = !x && len % 2 ? r[(len - 1) * height + y] : 0;
+#endif
+  r[x * height + y] += r[(x + len / 2) * height + y] + g;
 }
 
 // If r is length d,
@@ -108,11 +128,18 @@ __kernel void apply_permutation(const size_t height_pre,
 				__global const double *a,
 				__global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
+#ifndef ocl2c
   ulong p = -(ulong)(perm[y] < height_pre);
-  r[x * height_post + y] =
-    as_double(p & as_ulong(a[x * height_pre + perm[y]]));
-}
+  double g = as_double(p & as_ulong(a[x * height_pre + perm[y]]));
+#else
+  double g = perm[y] < height_pre? a[x * height_pre + perm[y]] : 0;
+#endif
+  r[x * height_post + y] = g;
 
+
+
+}
+  
 // Undoes apply_permutation.
 __kernel void apply_perm_inv(const size_t height_pre,
 			     const size_t height_post,
@@ -121,24 +148,16 @@ __kernel void apply_perm_inv(const size_t height_pre,
 			     __global const double *a,
 			     __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
+#ifndef ocl2c
   ulong p = -(ulong)(perm[y] < height_post);
   size_t z = (x * height_post + perm[y]) & p;
   z |= ~p & garbage;
+#else
+  size_t z = perm[y] < height_post? x * height_post + perm[y] : garbage;
+#endif
   r[z] = a[x * height_pre + y];
 }
 
-// If perm is size e, inv_p is size d + 1,
-// Θ(1) depth, Θ(e) work,
-// invert_perm(d, perm, inv_p)(e);
-__kernel void invert_perm(const size_t length,
-			  __global const size_t *perm,
-			  __global size_t *inv_p) {
-  size_t x = get_global_id(0);
-  size_t t = perm[x];
-  size_t p = -(size_t)(t < length);
-  t = (p & t) | (~p & length);
-  inv_p[t] = x;
-}
 #ifndef ocl2c
 __global const double rsr = rsqrt(2.0);
 #else
@@ -257,7 +276,7 @@ __kernel void apply_walsh_step(const size_t lheight,
     for(int j = 0; j < 16 && j < 1 << lheight; j++)
       a[x | y << 4 | j] *= rsr;
 }
-
+ 
 // dims: each point is d-dimensional
 // count: how many points do we compute distances to (k)
 // which: From x, compute distances to which[x][y].
@@ -278,10 +297,11 @@ __kernel void compute_diffs_squared(const size_t dims,
 				    __global const double *points,
 				    __global double *diff_results) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  int c;
-  z *= c = npts > which[x * count + y + skip];
+  int c = npts > which[x * count + y + skip];
+  c &= (pointsa != points) | (which[x * count + y + skip] != x);
+  // so as to put self at end.
   double d = pointsa[x * dims + z] -
-    points[which[x * count + y + skip] * dims + z];
+    points[which[x * count + y + skip] * dims * c + z];
   diff_results[(x * (count - skip) + y) * dims + z] = d * d + (1.0 / c - 1);
   // if out of range, infinite.
 }
@@ -307,14 +327,25 @@ __kernel void add_cols(const size_t height,
 		       __global double *out) {
   size_t j = k - skip;
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  mat[(x * j + y) * height + z] += mat[(x * j + y) * height + z + height / 2] +
-    as_double(-((!z) & height & 1) &
-	      as_ulong(mat[(x * j + y) * height + z + height / 2 + 1]));
+#ifndef ocl2c
+  double g = as_double(-((!z) & height & 1) &
+	      as_ulong(mat[(x * j + y + 1) * height - 1]));
+#else
+  double g = !z && height % 2? mat[(x * j + y + 1) * height - 1] : 0;
+#endif
+  mat[(x * j + y) * height + z] +=
+    mat[(x * j + y) * height + z + height / 2] + g;
   for(size_t s = height >> 2, os = (height>>1)&1; s > 0; os = s & 1, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
-    mat[(x * j + y) * height + z] +=
-      as_double((z < s) & as_ulong(mat[(x * j + y) * height + z + s])) +
-      as_double(-((!z) & os) & as_ulong(mat[(x * j + y) * height + s * 2]));
+#ifndef ocl2c
+    g = as_double((z < s) & as_ulong(mat[(x * j + y) * height + z + s]));
+    double h = as_double(-((!z) & os) &
+			 as_ulong(mat[(x * j + y) * height + s * 2]));
+#else
+    g = z < s? mat[(x * j + y) * height + z + s] : 0;
+    double h = !z && os? mat[(x * j + y) * height + s * 2] : 0;
+#endif
+    mat[(x * j + y) * height + z] += g + h;
   }
   out[x * k + y + skip] = mat[(x * j + y) * height];
 }
@@ -327,9 +358,14 @@ __kernel void add_cols_step(const size_t height,
 			    const size_t k,
 			    __global double *mat) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  mat[(x * k + y) * height + z] +=
-    mat[(x * k + y) * height + z + s] +
-    as_double(-((!z) & s) & as_ulong(mat[(x * k + y) * height + s - 1]));
+  //fprintf(stderr, "%zu %zu %zu %zu %zu %zu\n", height, s, k, x, y, z);
+#ifndef ocl2c
+  double g = as_double(-((!z) & s) &
+		       as_ulong(mat[(x * k + y) * height + s - 1]));
+#else
+  double g = !z && s % 2? mat[(x * k + y) * height + s - 1] : 0;
+#endif
+  mat[(x * k + y) * height + z] += mat[(x * k + y) * height + z + s/2] + g;
 }
 
 // If mat is n by (k - s) by d,
@@ -368,20 +404,19 @@ __kernel void sort_two_step(const size_t count,
     size_t y1 = y << 3 | i;
     size_t y_high = (y1 >> sstep) << sstep;
     size_t y_low = y1 ^ y_high;
-    size_t y_a = (y_high << 1) | y_low;
+    size_t y_a = y_high << 1 | y_low;
     if(sstep == step)
-      y_low = (1 << sstep) - y_low;
+      y_low = (1 << sstep) - y_low - 1;
     size_t y_b = y_high << 1 | 1 << sstep | y_low;
-    ulong doswap = -(order[x + y_a] > order[x + y_b]);
-    ulong trash = -(count > y_a);
+    ulong trash = -(count > y_b);
     size_t alpha = (trash & (x + y_a)) | (~trash & (n * count));
     size_t beta = (trash & (x + y_b)) | (~trash & (n * count));
-    ulong a = as_ulong(order[alpha]), b = as_ulong(order[beta]);
-    a ^= b, b ^= a & doswap, a ^= b;
-    order[alpha] = as_double(a), order[beta] = as_double(b);
-    a = along[alpha], b = along[beta];
-    a ^= b, b ^= a & doswap, a ^= b;
-    along[alpha] = a, along[beta] = b;
+    double ao = order[alpha], bo = order[beta];
+    size_t aa = along[alpha], ba = along[beta];
+    ulong doswap = -(ao > bo);
+    alpha ^= beta, beta ^= alpha & doswap, alpha ^= beta;
+    along[alpha] = aa, along[beta] = ba;
+    order[alpha] = ao, order[beta] = bo;
   }
 }
 
@@ -442,12 +477,12 @@ __kernel void copy_some_floats(const size_t height_pre,
 // Θ(d) depth, Θ(nd) work,
 // compute_signs(d, points, results)(n);
 __kernel void compute_signs(const size_t d,
-			    __global const long *points,
+			    __global const ulong *points,
 			    __global size_t *results) {
   size_t x = get_global_id(0);
   size_t r = 0;
   for(size_t i = 0; i < d; i++)
-    r = (r | (points[x * d + i] >> 63)) << 1;
+    r = r << 1 | (points[x * d + i] >> 63);
   results[x] = r;
 }
 
@@ -462,24 +497,25 @@ __kernel void compute_which(const size_t d,
 			    __global const size_t *which_in,
 			    __global size_t *which) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  which[(x * (d + 1) + y) * max + z] =
-    which_in[(wi_rev[x] ^ (!y << (y - 1))) * max + z];
+  size_t p = which_in[(wi_rev[x] ^ (!!y << (y - 1))) * max + z];
+  which[(x * (d + 1) + y) * max + z] = p;
 }
 
-// If neighborsa is m by l,
+// If neighborsa is m by la,
 // neighbors is n by l, after is m by k * (k + 1),
 // Θ(1) depth, Θ(mk^2) work,
 // supercharge(n, l, k, neighborsa, neighbors, after)(m, k, k);
 __kernel void supercharge(const size_t n,
+			  const size_t la,
 			  const size_t l,
 			  const size_t k,
 			  __global const size_t *neighborsa,
 			  __global const size_t *neighbors,
 			  __global size_t *after) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  size_t w = -(size_t)(n > neighborsa[x * l + y]) ;
-  after[(x * k + y) * k + k + z]
-    = neighbors[(w & neighborsa[x * l + y]) * l + z] | (~w & n);
+  size_t w = -(size_t)(n > neighborsa[x * la + y]);
+  after[(x * (k + 1) + y + 1) * k + z]
+    = neighbors[(w & neighborsa[x * la + y]) * l + z] | (~w & n);
 }
 
 // If v is m by d, p is n by d, o is n by d,

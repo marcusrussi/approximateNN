@@ -6,7 +6,7 @@ WARNS := -Wall -Wextra -Wpedantic
 
 all: $(EFILES)
 clean: 
-	rm -f $(EFILES) $(OFILES)
+	rm -rf $(EFILES) $(OFILES)
 
 alg.o: ocl2c.h compute.cl rand_pr.h
 

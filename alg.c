@@ -37,8 +37,7 @@ void walsh(size_t d, size_t n, double *a) {
 
 void add_up_cols(size_t d, size_t k, size_t skip, size_t n,
 		 double *mat, double *out) {
-  LOOP3(add_cols_step(d, d, k - skip, mat), n, k - skip, d / 2);
-  for(size_t l = d / 2; l >> 1; l >>= 1)
+  for(size_t l = d; l >> 1; l >>= 1)
     LOOP3(add_cols_step(d, l, k - skip, mat), n, k - skip, l / 2);
   LOOP2(add_cols_fin(d, k, skip, mat, out), n, k - skip);
 }
@@ -46,11 +45,10 @@ void add_up_cols(size_t d, size_t k, size_t skip, size_t n,
 void do_sort(size_t k, size_t n, size_t *along, double *order) {
   int lk = lg(k);
   size_t nth = (size_t)1 << max(lk - 4, 0);
-  for(int s = 1; s < lk; s++)
+  for(int s = 0; s < lk; s++)
     for(int ss = s; ss >= 0; ss--)
       LOOP2(sort_two_step(k, n, s, ss, along, order), n, nth);
 }
-
 
 /* Starting point: */
 /* We have an array, points, that is n by d_long. */
@@ -83,7 +81,6 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
     save->k = k;
     save->d_short = d_short;
     save->d_long = d;
-    save->points = points;
     save->row_means = malloc(sizeof(double) * d);
     memcpy(save->row_means, row_sums, sizeof(double) * d);
     save->which_par = malloc(sizeof(size_t *) * tries);
@@ -126,12 +123,12 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
 	                   rot_js_a + j * rot_len_after,
 			   rot_as_a + j * rot_len_after, pc2),
 	    n, rot_len_after);
-    pc = malloc(sizeof(double) * n * d_short + 1);
+    pc = malloc(sizeof(double) * (n * d_short + 1));
     LOOP2(apply_perm_inv(d_max, d_short, n * d_short, perm_after_i, pc2, pc),
 	     n, d_max);
     free(pc2);
     size_t *signs = malloc(sizeof(size_t) * n);
-    LOOP1(compute_signs(d_short, (long *)pc, signs), n);
+    LOOP1(compute_signs(d_short, (unsigned long *)pc, signs), n);
     free(pc);
     if(save) {
       double *vecs = malloc(sizeof(double) * (d_short * d + 1));
@@ -153,7 +150,7 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
       for(long j = rots_before - 1; j >= 0; j--)
 	LOOP2(apply_rotation(d, rot_js_b + j * rot_len_before,
 			     rot_is_b + j * rot_len_before,
-			     rot_as_b + j * rot_len_before, vecs2),
+			     rot_as_b + j * rot_len_before, vecs),
 	      d_short, rot_len_before);
       memcpy(save->bases + i * d_short * d, vecs,
 	     sizeof(double) * d_short * d);
@@ -169,9 +166,9 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
     free(perm_after_i);
     size_t *counts = malloc(sizeof(size_t) << d_short);
     for(size_t j = 0; j < 1 << d_short; j++)
-        counts[j] = 0;
+      counts[j] = 0;
     for(size_t j = 0; j < n; j++)
-	counts[signs[j]]++;
+      counts[signs[j]]++;
     size_t tmax = counts[0];
     for(size_t j = 1; j < 1 << d_short; j++)
         if(tmax < counts[j])
@@ -185,7 +182,7 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
 	for(size_t l = counts[j]; l < tmax; l++)
 	    which[j * tmax + l] = n;
     for(size_t j = 0; j < n; j++)
-        which[j * tmax + --counts[signs[j]]] = j;
+        which[signs[j] * tmax + --counts[signs[j]]] = j;
     free(counts);
     size_t *which_d = malloc(sizeof(size_t) * ((d_short + 1) * n * tmax + 1));
     double *dists = malloc(sizeof(double) * (((d_short + 1) * n * tmax + 1)));
@@ -205,19 +202,18 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
 	                      which_d, pointers_out), n, k);
     LOOP2(copy_some_floats((d_short + 1) * tmax, k * tries, k * i,
 			   dists, dists_out), n, k);
-    if(save != NULL)
+    if(save == NULL)
         free(which);
     free(signs);
-    free(counts);
     free(which_d);
-    free(diffs);
   }
   do_sort(k * tries, n, pointers_out, dists_out);
   LOOP2(rdups(k * tries, pointers_out, dists_out), n, k * tries - 1);
   do_sort(k * tries, n, pointers_out, dists_out);
   size_t *nedge = malloc(sizeof(size_t) * (n * k * (k + 1) + 1));
   double *ndists = malloc(sizeof(double) * (n * k * (k + 1) + 1));
-  LOOP3(supercharge(n, k * tries, k, pointers_out, pointers_out, nedge),
+  LOOP3(supercharge(n, k * tries, k * tries, k,
+		    pointers_out, pointers_out, nedge),
 	n, k, k);
   LOOP2(copy_some_ints(k * tries, k * (k + 1), 0, pointers_out, nedge),
 	n, k);
@@ -229,6 +225,7 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
   LOOP3(compute_diffs_squared(d, k * (k + 1), n, k,
 			      nedge, points, points, diffs),
 	n, k * k, d);
+  free(points);
   add_up_cols(d, k * (k + 1), k, n, diffs, ndists);
   free(diffs);
   do_sort(k * (k + 1), n, nedge, ndists);
@@ -236,30 +233,30 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
   do_sort(k * (k + 1), n, nedge, ndists);
   free(ndists);
   size_t *fedges = malloc(sizeof(size_t) * n * k);
-  if(save)
+  if(save != NULL)
     save->graph = fedges;
   LOOP2(copy_some_ints(k * (k + 1), k, 0, nedge, fedges), n, k);
   free(nedge);
   return(fedges);
 }
 
-// We now have save->points (n by d_long), save->graph (n by k),
+// We now have points (n by d_long), save->graph (n by k),
 // save->row_means (d_long), save->par_maxes (tries),
 // save->which_par (tries, then 1 << d_short by save->par_maxes[i]),
 // save->bases (tries by d_short by d_long), y (ycnt by d_long).
 
-size_t *query(const save_t *save, size_t ycnt, double *y) {
-  double *cprds = malloc(sizeof(double) * save->tries *
+size_t *query(const save_t *save, const double *points,
+	      size_t ycnt, double *y) {
+  double *cprds = malloc(sizeof(double) * save->tries * ycnt *
 			 save->d_short * save->d_long);
-  double *dprds = malloc(sizeof(double) * save->tries * save->d_short);
-  {
-    double *y2 = malloc(sizeof(double) * save->d_long * ycnt);
-    memcpy(y2, y, sizeof(double) * save->d_long * ycnt);
-    y = y2;
-  }
-  LOOP2(subtract_off(save->d_long, y, save->row_means), ycnt, save->d_long);
-  LOOP3(prods(save->d_long, save->n, y, save->bases, cprds),
+  double *dprds = malloc(sizeof(double) * save->tries * ycnt * save->d_short);
+  double *y2 = malloc(sizeof(double) * save->d_long * ycnt);
+  memcpy(y2, y, sizeof(double) * save->d_long * ycnt);
+  LOOP2(subtract_off(save->d_long, y2, save->row_means), ycnt, save->d_long);
+  LOOP3(prods(save->d_long, save->tries * save->d_short, y2,
+	      save->bases, cprds),
 	ycnt, save->tries * save->d_short, save->d_long);
+  free(y2);
   add_up_cols(save->d_long, save->d_short, 0, save->tries * ycnt,
 	      cprds, dprds);
   free(cprds);
@@ -269,8 +266,9 @@ size_t *query(const save_t *save, size_t ycnt, double *y) {
     pmaxes[i] = msofar;
     msofar += save->par_maxes[i];
   }
-  size_t *signs = malloc(sizeof(size_t) * save->tries);
-  LOOP1(compute_signs(save->d_short, (long *)dprds, signs), save->tries * ycnt);
+  size_t *signs = malloc(sizeof(size_t) * save->tries * ycnt);
+  LOOP1(compute_signs(save->d_short, (unsigned long *)dprds, signs),
+      save->tries * ycnt);
   free(dprds);
   size_t *ppts = malloc(sizeof(size_t) *
 			(msofar * (save->d_short + 1) * ycnt + 1));
@@ -297,7 +295,7 @@ size_t *query(const save_t *save, size_t ycnt, double *y) {
   double *diffs = malloc(sizeof(double) *
 			 msofar * (save->d_short + 1) * save->d_long * ycnt);
   LOOP3(compute_diffs_squared(save->d_long, msofar * (save->d_short + 1),
-			      save->n, 0, ipts, y, save->points, diffs),
+			      save->n, 0, ipts, y, points, diffs),
 	ycnt, msofar * (save->d_short + 1), save->d_long);
   add_up_cols(save->d_long, msofar * (save->d_short + 1), 0, ycnt,
 	      diffs, dpts);
@@ -309,25 +307,28 @@ size_t *query(const save_t *save, size_t ycnt, double *y) {
   {
     size_t *ipts2 = malloc(sizeof(size_t) *
 			   (save->k * (save->k + 1) * ycnt + 1));
-    LOOP2(copy_some_ints(save->k, save->k, 0, ipts, ipts2),
+    LOOP2(copy_some_ints(msofar * (save->d_short + 1),
+			 save->k * (save->k + 1), 0, ipts, ipts2),
 	  ycnt, save->k);
+    LOOP3(supercharge(save->n, msofar * (save->d_short + 1), save->k, save->k,
+		      ipts, save->graph, ipts2),
+	  ycnt, save->k, save->k);
+
     free(ipts);
-    ipts = ipts2;
+    (ipts = ipts2)[save->k * (save->k + 1) * ycnt] = save->n;
     double *dpts2 = malloc(sizeof(double) *
 			   (save->k * (save->k + 1) * ycnt + 1));
-    LOOP2(copy_some_floats(save->k, save->k, 0, dpts, dpts2),
+    LOOP2(copy_some_floats(msofar * (save->d_short + 1),
+			   save->k * (save->k + 1), 0, dpts, dpts2),
 	  ycnt, save->k);
     free(dpts);
-    dpts = dpts2;
+    (dpts = dpts2)[save->k * (save->k + 1) * ycnt] = 1.0/0;
   }
-  LOOP3(supercharge(save->n, 0, save->k, ipts, save->graph, ipts),
-	ycnt, save->k, save->k);
   diffs = malloc(sizeof(double) * save->k * save->k * save->d_long * ycnt);
   
   LOOP3(compute_diffs_squared(save->d_long, save->k * (save->k + 1), save->n,
-			      save->k, ipts, y, save->points, diffs),
+			      save->k, ipts, y, points, diffs),
 	ycnt, save->k * save->k, save->d_long);
-  free(y);
   add_up_cols(save->d_long, save->k * (save->k + 1), save->k, ycnt,
 	      diffs, dpts);
   free(diffs);
@@ -350,7 +351,6 @@ void free_save(save_t *save) {
   free(save->which_par);
   free(save->par_maxes);
   free(save->graph);
-  free(save->points);
   free(save->row_means);
   free(save->bases);
 }

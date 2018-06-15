@@ -20,13 +20,6 @@ typedef unsigned long ulong;
 #define LOOP3(f, mx, my, mz) for(glob_z = 0; glob_z < (mz); glob_z++)\
     LOOP2(f, mx, my)
 
-static ulong as_ulong(double d) {
-  return(*(ulong *)&d);
-}
-static double as_double(ulong u) {
-  return(*(double *)&u);
-}
-
 #define get_global_id(i) (i == 0? glob_x : i == 1? glob_y : glob_z)
 
 #endif

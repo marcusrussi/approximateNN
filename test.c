@@ -26,6 +26,7 @@ int main(int argc, char **argv) {
 	      "\t-b n\t\tSet the pre-Walsh rotation count to n (default 6)\n"
 	      "\t-d n\t\tSet the dimensionality to n (default 80)\n"
 	      "\t-h\t\tPrint this help text\n"
+	      "\t-k n\t\tRequest k nearest neighbors (default 10)\n"
 	      "\t-n n\t\tSet the point count to n (default 1000)\n"
 	      "\t-o n\t\tSet the number of repetitions to average over to n"
 	      " (default 100)\n"
@@ -78,18 +79,18 @@ int main(int argc, char **argv) {
     save_t save;
     genRand(n, d, points);
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save);
-    free(points);
-    points = malloc(sizeof(double) * ycnt * d);
+    double *y = malloc(sizeof(double) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff;
       tval start, end;
-      genRand(ycnt, d, points);
+      genRand(ycnt, d, y);
       gettm(start);
-      stuff = query(&save, ycnt, points);
+      stuff = query(&save, points, ycnt, y);
       gettm(end);
       free(stuff);
       time_used += td(start, end);
     }
+    free(y);
     free_save(&save);
   } else
     for(size_t i = 0; i < average_over; i++) {
@@ -108,9 +109,7 @@ int main(int argc, char **argv) {
       time_used += td(start, end);
     }
   free(points);
-  printf("Average time for %s: %fns\n",
+  printf("Average time for %s: %gs\n",
 	 ycnt? "query" : save_test? "comp (with save)" : "comp (no save)",
-	 time_used / average_over);
+	 time_used / average_over / 1000000000);
 }
-
-    
