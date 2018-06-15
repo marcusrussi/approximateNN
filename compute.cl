@@ -358,7 +358,6 @@ __kernel void add_cols_step(const size_t height,
 			    const size_t k,
 			    __global double *mat) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  //fprintf(stderr, "%zu %zu %zu %zu %zu %zu\n", height, s, k, x, y, z);
 #ifndef ocl2c
   double g = as_double(-((!z) & s) &
 		       as_ulong(mat[(x * k + y) * height + s - 1]));

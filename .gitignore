@@ -1,3 +1,4 @@
 *~
 *.o
-test
+test_correctness
+time_results

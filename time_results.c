@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     genRand(n, d, points);
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, use_cpu);
     if(progress)
-      printf("Precompilation finished.\n");
+      printf("Precomputation finished.\n");
     double *y = malloc(sizeof(double) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff;
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
   free(points);
   if(progress)
     putchar('\n');
-  printf("Average time for % (on %cPU): %gs\n",
+  printf("Average time for %s (on %cPU): %gs\n",
 	 ycnt? "query" : save_test? "comp (with save)" : "comp (no save)",
 	 use_cpu? 'C' : 'G',
 	 time_used / average_over / 1000000000);
