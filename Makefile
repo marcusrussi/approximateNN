@@ -1,6 +1,6 @@
-EFILES := test
-OFILES := alg.o randNorm.o rand_pr.o test.o
-FAKE_HFILES := test.h
+EFILES := time_results
+OFILES := algc.o randNorm.o rand_pr.o time_results.o algg.o ann.o
+FAKE_HFILES := time_results.h
 OSOPT := -DOSX
 WARNS := -Wall -Wextra -Wpedantic
 
@@ -8,12 +8,18 @@ all: $(EFILES)
 clean: 
 	rm -rf $(EFILES) $(OFILES)
 
-alg.o: ocl2c.h compute.cl rand_pr.h
+algc.o: ocl2c.h compute.cl rand_pr.h ann.h
+algg.o: ann.h rand_pr.h
 
-test.o: alg.h randNorm.h timing.h
+ann.c: algc.h algg.h
 
-test: $(OFILES)
-	cc -o test -lm $(OFILES)
+algc.h algg.h: ann.h
+	touch $@
+
+time_results.o: ann.h randNorm.h timing.h
+
+time_results: $(OFILES)
+	cc -o $@ -lm $(OFILES)
 
 .INTERMEDIATE: $(FAKE_HFILES)
 

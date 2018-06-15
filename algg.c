@@ -1,14 +1,9 @@
-#include <math.h>
-#include <stdlib.h>
-#include "ocl2c.h"
-#include "compute.cl"
+#include "ann.h"
 #include "rand_pr.h"
-#include "alg.h"
-#include <string.h>
 
 #define max(a, b) ((a) < (b)?b:(a))
 
-unsigned lg(size_t d) {
+static unsigned lg(size_t d) {
   unsigned r = (d > 0xFFFFFFFF) << 5;
   d >>= r;
   unsigned s = (d > 0xFFFF) << 4;
@@ -18,14 +13,14 @@ unsigned lg(size_t d) {
   d >>= s = (d > 3) << 1;
   return(r | s | d >> 1);
 }
-
-void add_up_rows(size_t d, size_t n, double *points, double *sums) {
+#if 0
+static void add_up_rows(size_t d, size_t n, double *points, double *sums) {
   LOOP2(add_rows_step_0(d, n, points, sums), n/2, d);
   for(size_t m = n >> 1; m >> 1; m >>= 1)
     LOOP2(add_rows_step_n(d, m, sums), m/2, d);
 }
 
-void walsh(size_t d, size_t n, double *a) {
+static void walsh(size_t d, size_t n, double *a) {
   if(d == 1)
     return;
   int l = lg(d);
@@ -35,28 +30,31 @@ void walsh(size_t d, size_t n, double *a) {
     LOOP2(apply_walsh_step(l, i, a), n, nth);
 }
 
-void add_up_cols(size_t d, size_t k, size_t skip, size_t n,
+static void add_up_cols(size_t d, size_t k, size_t skip, size_t n,
 		 double *mat, double *out) {
   for(size_t l = d; l >> 1; l >>= 1)
     LOOP3(add_cols_step(d, l, k - skip, mat), n, k - skip, l / 2);
   LOOP2(add_cols_fin(d, k, skip, mat, out), n, k - skip);
 }
 
-void do_sort(size_t k, size_t n, size_t *along, double *order) {
+static void do_sort(size_t k, size_t n, size_t *along, double *order) {
   int lk = lg(k);
   size_t nth = (size_t)1 << max(lk - 4, 0);
   for(int s = 0; s < lk; s++)
     for(int ss = s; ss >= 0; ss--)
       LOOP2(sort_two_step(k, n, s, ss, along, order), n, nth);
 }
-
+#endif
 /* Starting point: */
 /* We have an array, points, that is n by d_long. */
 /* We also have save, which is a save structure. */
-
-size_t *precomp(size_t n, size_t k, size_t d, double *points,
-		int tries, size_t rots_before, size_t rot_len_before,
-		size_t rots_after, size_t rot_len_after, save_t *save) {
+#include <stdio.h>
+size_t *precomp_gpu(size_t n, size_t k, size_t d, double *points,
+		    int tries, size_t rots_before, size_t rot_len_before,
+		    size_t rots_after, size_t rot_len_after, save_t *save) {
+  fprintf(stderr, "Sorry, gpu unimplemented.\n");
+  exit(1);
+#if 0
   size_t d_short = ceil(log2((double)n / k));
   size_t d_max = d - 1;
   d_max |= d_max >> 1;
@@ -238,6 +236,8 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
   LOOP2(copy_some_ints(k * (k + 1), k, 0, nedge, fedges), n, k);
   free(nedge);
   return(fedges);
+#endif
+  return(NULL);
 }
 
 // We now have points (n by d_long), save->graph (n by k),
@@ -245,8 +245,12 @@ size_t *precomp(size_t n, size_t k, size_t d, double *points,
 // save->which_par (tries, then 1 << d_short by save->par_maxes[i]),
 // save->bases (tries by d_short by d_long), y (ycnt by d_long).
 
-size_t *query(const save_t *save, const double *points,
+size_t *query_gpu(const save_t *save, const double *points,
 	      size_t ycnt, double *y) {
+  fprintf(stderr, "Sorry, gpu unimplemented.\n");
+  exit(1);
+  return(NULL);
+#if 0
   double *cprds = malloc(sizeof(double) * save->tries * ycnt *
 			 save->d_short * save->d_long);
   double *dprds = malloc(sizeof(double) * save->tries * ycnt * save->d_short);
@@ -342,15 +346,5 @@ size_t *query(const save_t *save, const double *points,
 	ycnt, save->k);
   free(ipts);
   return(results);
-}
-
-void free_save(save_t *save) {
-  for(int i = 0; i < save->tries; i++) {
-    free(save->which_par[i]);
-  }
-  free(save->which_par);
-  free(save->par_maxes);
-  free(save->graph);
-  free(save->row_means);
-  free(save->bases);
+#endif
 }
