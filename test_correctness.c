@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <limits.h>
+#include "gpu_comp.h"
 
 void genRand(size_t n, size_t d, double *points) {
   for(size_t i = 0; i < n * d; i++)
@@ -11,18 +12,18 @@ void genRand(size_t n, size_t d, double *points) {
 }
 
 double compute_score(size_t n, size_t k, size_t d,
-		     const double *points, const size_t *guess);
+		     const double *points, const size_t *guess, double *scb);
 double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
 			   const double *points, const double *y,
-			   const size_t *guess);
+			   const size_t *guess, double *scb);
 
 int main(int argc, char **argv) {
   size_t n = 1000, k = 10, d = 80, tries = 10, average_over = 100;
-  size_t ycnt = 0, rb = 6, rlenb = 1, ra = 1, rlena = 1;
-  char progress = 0, use_cpu = 0;
+  size_t ycnt = 50, rb = 6, rlenb = 1, ra = 1, rlena = 1;
+  char progress = 0, use_cpu = 0, use_y = 0;
   opterr = 0;
   int c;
-  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hv")) != -1)
+  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hvc")) != -1)
     switch(c) {
     case '?':
       fprintf(stderr, "Unknown option %c or missing argument.\n", optopt);
@@ -41,7 +42,8 @@ int main(int argc, char **argv) {
 	      "\t-s n\t\tSet the pre-Walsh rotation size to n (default 1)\n"
 	      "\t-t n\t\tSet the try-count to n (default 10)\n"
 	      "\t-v\t\tIncrease verbosity\n"
-	      "\t-y n\t\tSet the count of query points to n\n");
+	      "\t-y n\t\tSet the count of query points to n\n"
+	      "\t-z\t\tSame as -y 50\n");
       exit(0);
     case 'n':
       n = strtol(optarg, NULL, 0);
@@ -60,6 +62,8 @@ int main(int argc, char **argv) {
       break;
     case 'y':
       ycnt = strtol(optarg, NULL, 0);
+    case 'z':
+      use_y = 1;
       break;
     case 'b':
       rb = strtol(optarg, NULL, 0);
@@ -83,9 +87,11 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Can\'t happen!\n");
       exit(1);
     }
-  double score = 0;
+  if(!use_cpu)
+    gpu_init();
+  double score = 0, scb = 0;
   double *points = malloc(sizeof(double) * n * d);
-  if(ycnt) {
+  if(use_y) {
     save_t save;
     genRand(n, d, points);
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, use_cpu);
@@ -96,7 +102,7 @@ int main(int argc, char **argv) {
       size_t *stuff;
       genRand(ycnt, d, y);
       stuff = query(&save, points, ycnt, y, use_cpu);
-      score += compute_score_query(n, k, d, ycnt, points, y, stuff);
+      score += compute_score_query(n, k, d, ycnt, points, y, stuff, &scb);
       free(stuff);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
@@ -109,23 +115,25 @@ int main(int argc, char **argv) {
       genRand(n, d, points);
       stuff = precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
 		      NULL, use_cpu);
-      score += compute_score(n, k, d, points, stuff);
+      score += compute_score(n, k, d, points, stuff, &scb);
       free(stuff);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
     }
+  if(!use_cpu)
+    gpu_cleanup();
   free(points);
   if(progress)
     putchar('\n');
-  printf("Average score for %s (on %cPU): %g\n",
+  printf("Average score for %s (on %cPU): %g; prob correct: %g\n",
 	 ycnt? "query" :  "comp",
 	 use_cpu? 'C' : 'G',
-	 score / average_over - k * (k - 1) / 2);
+	 score / average_over - k * (k - 1) / 2, 1 - scb / average_over);
 }
 
 // guess is y by k, ansinv is y by n.
 double cscore(size_t y, size_t n, size_t k,
-	      const size_t *guess, const size_t *ansinv);
+	      const size_t *guess, const size_t *ansinv, double *foo);
 
 typedef struct {
   size_t point;
@@ -149,7 +157,7 @@ void compdists(size_t ycnt, size_t n, size_t d,
 	       pairedup *p, const double *y, const double *points);
 
 double compute_score(size_t n, size_t k, size_t d,
-		     const double *points, const size_t *guess) {
+		     const double *points, const size_t *guess, double *scb) {
   pairedup *ans = malloc(sizeof(pairedup) * n * (n - 1));
   for(size_t i = 0; i < n; i++)
     for(size_t j = 0, k = 0; j < n - 1; j++, k++) {
@@ -162,13 +170,14 @@ double compute_score(size_t n, size_t k, size_t d,
     qsort(ans + i * (n - 1), n - 1, sizeof(pairedup), cpoint);
   size_t *ia = inv_ans(n, 0, ans);
   free(ans);
-  double f = cscore(n, n, k, guess, ia);
+  double f = cscore(n, n, k, guess, ia, scb);
   free(ia);
   return(f);
 }
+
 double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
 			   const double *points, const double *y,
-			   const size_t *guess) {
+			   const size_t *guess, double *scb) {
   pairedup *ans = malloc(sizeof(pairedup) * ycnt * n);
   for(size_t i = 0; i < ycnt; i++)
     for(size_t j = 0; j < n; j++)
@@ -178,7 +187,7 @@ double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
     qsort(ans + i * n, n, sizeof(pairedup), cpoint);
   size_t *ia = inv_ans(ycnt, n, ans);
   free(ans);
-  double f = cscore(ycnt, n, k, guess, ia);
+  double f = cscore(ycnt, n, k, guess, ia, scb);
   free(ia);
   return(f);
 }
@@ -223,10 +232,15 @@ size_t *inv_ans(size_t y, size_t n, const pairedup *ans) {
 }
 
 double cscore(size_t y, size_t n, size_t k,
-	      const size_t *guess, const size_t *ansinv) {
-  double f = 0;
+	      const size_t *guess, const size_t *ansinv, double *d) {
+  double f = 0, g = 0;;
   for(size_t i = 0; i < y; i++)
-    for(size_t j = 0; j < k; j++)
-      f += ansinv[i * n + guess[i * k + j]];
+    for(size_t j = 0; j < k; j++) {
+      size_t l = ansinv[i * n + guess[i * k + j]];
+      f += l;
+      g += l >= k;
+    }
+  *d += g / y / k;
   return(f / y);
 }
+

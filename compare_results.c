@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <string.h>
+#include "gpu_comp.h"
 
 void genRand(size_t n, size_t d, double *points) {
   for(size_t i = 0; i < n * d; i++)
@@ -24,11 +25,11 @@ size_t diffcount(size_t n, size_t k, size_t *p, size_t *q) {
 
 int main(int argc, char **argv) {
   size_t n = 1000, k = 10, d = 80, tries = 10, average_over = 100;
-  size_t ycnt = 0, rb = 6, rlenb = 1, ra = 1, rlena = 1;
-  char progress = 0;
+  size_t ycnt = 50, rb = 6, rlenb = 1, ra = 1, rlena = 1;
+  char progress = 0, use_y = 0;
   opterr = 0;
   int c;
-  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hv")) != -1)
+  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hvz")) != -1)
     switch(c) {
     case '?':
       fprintf(stderr, "Unknown option %c or missing argument.\n", optopt);
@@ -46,7 +47,8 @@ int main(int argc, char **argv) {
 	      "\t-s n\t\tSet the pre-Walsh rotation size to n (default 1)\n"
 	      "\t-t n\t\tSet the try-count to n (default 10)\n"
 	      "\t-v\t\tIncrease verbosity\n"
-	      "\t-y n\t\tSet the count of query points to n\n");
+	      "\t-y n\t\tSet the count of query points to n\n"
+	      "\t-z\t\tSame as -y 50\n");
       exit(0);
     case 'n':
       n = strtol(optarg, NULL, 0);
@@ -65,6 +67,8 @@ int main(int argc, char **argv) {
       break;
     case 'y':
       ycnt = strtol(optarg, NULL, 0);
+    case 'z':
+      use_y = 1;
       break;
     case 'b':
       rb = strtol(optarg, NULL, 0);
@@ -85,10 +89,11 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Can\'t happen!\n");
       exit(1);
     }
+  gpu_init();
   double score = 0;
   double *points = malloc(sizeof(double) * n * d);
   FILE *randomf = fopen("/dev/urandom", "r");
-  if(ycnt) {
+  if(use_y) {
     save_t save;
     genRand(n, d, points);
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 0);
@@ -127,6 +132,7 @@ int main(int argc, char **argv) {
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
     }
+  gpu_cleanup();
   free(points);
   if(progress)
     putchar('\n');

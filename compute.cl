@@ -158,13 +158,6 @@ __kernel void apply_perm_inv(const size_t height_pre,
   r[z] = a[x * height_pre + y];
 }
 
-#ifndef ocl2c
-__global const double rsr = rsqrt(2.0);
-#else
-double rsr;
-char rsrset = 0;
-#endif
-
 // Walsh transform:
 // if(1 << (l - 4) <= max_conc_threads)
 //   apply_walsh(l, a)(n, 1 << max(l - 4, 0))(1);
@@ -179,10 +172,7 @@ char rsrset = 0;
 // apply_walsh(l, a)(n, 1 << max(l - 4, 0));
 __kernel void apply_walsh(const size_t lheight,
 			  __global double *a) {
-#ifdef ocl2c
-  if(!rsrset)
-    rsrset = 1, rsr = rsqrt(2.0);
-#endif
+  double rsr = rsqrt(2.0);
   size_t x = get_global_id(0), y = get_global_id(1);
   switch(lheight) {
   case 0:
@@ -245,10 +235,7 @@ __kernel void apply_walsh(const size_t lheight,
 __kernel void apply_walsh_step(const size_t lheight,
 			       const size_t step,
 			       __global double *a) {
-#ifdef ocl2c
-  if(!rsrset)
-    rsrset = 1, rsr = rsqrt(2.0);
-#endif
+  double rsr = rsqrt(2.0);
   size_t x = get_global_id(0) << lheight, y = get_global_id(1);
   if(!lheight)
     return;

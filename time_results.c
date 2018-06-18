@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include "gpu_comp.h"
 
 void genRand(size_t n, size_t d, double *points) {
   for(size_t i = 0; i < n * d; i++)
@@ -81,6 +82,8 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Can\'t happen!\n");
       exit(1);
     }
+  if(!use_cpu)
+    gpu_init();
   double time_used = 0;
   double *points = malloc(sizeof(double) * n * d);
   if(ycnt) {
@@ -123,6 +126,8 @@ int main(int argc, char **argv) {
 	printf("%zu ", i + 1), fflush(stdout);
     }
   free(points);
+  if(!use_cpu)
+    gpu_cleanup();
   if(progress)
     putchar('\n');
   printf("Average time for %s (on %cPU): %gs\n",

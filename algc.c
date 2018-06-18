@@ -30,8 +30,7 @@ static void walsh(size_t d, size_t n, double *a) {
     return;
   int l = lg(d);
   size_t nth = max(d / 16, 1);
-  LOOP2(apply_walsh_step(l, 0, a), n, nth);
-  for(int i = 1; i < l; i++)
+  for(int i = 0; i < l; i++)
     LOOP2(apply_walsh_step(l, i, a), n, nth);
 }
 

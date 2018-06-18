@@ -1,6 +1,6 @@
 TEST_EFILES := time_results test_correctness
 EFILES := $(TEST_EFILES) compare_results
-LIB_OFILES := algc.o rand_pr.o algg.o ann.o
+LIB_OFILES := algc.o rand_pr.o algg.o ann.o gpu_comp.o
 TEST_OFILES := time_results.o test_correctness.o compare_results.o
 OFILES := $(LIB_OFILES) randNorm.o $(TEST_OFILES)
 FAKE_HFILES := time_results.h test_correctness.h compare_results.h
@@ -14,25 +14,25 @@ clean:
 	rm -rf $(EFILES) $(OFILES)
 
 algc.o: ocl2c.h compute.cl rand_pr.h ann.h
-algg.o: ann.h rand_pr.h
+algg.o: ann.h rand_pr.h gpu_comp.h
 
 ann.o: algc.h algg.h
 
 algc.h algg.h: ann.h
 	touch $@
 
-time_results.o test_correctness.o compare_results.o: ann.h randNorm.h
+$(TEST_OFILES): ann.h randNorm.h gpu_comp.h
 
 time_results.o: timing.h
 
 time_results: time_results.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm time_results.o $(LIB_OFILES) randNorm.o
+	cc -o $@ -lm -lOpenCL $^
 
 test_correctness: test_correctness.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm $^
+	cc -o $@ -lm -lOpenCL $^
 
 compare_results: compare_results.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm $^
+	cc -o $@ -lm -lOpenCL $^
 
 .INTERMEDIATE: $(FAKE_HFILES)
 
