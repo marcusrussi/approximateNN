@@ -504,7 +504,7 @@ __kernel void supercharge(const size_t n,
     = neighbors[(w & neighborsa[x * la + y]) * l + z] | (~w & n);
 }
 
-// If v is m by d, p is n by d, o is n by d,
+// If v is m by d, p is n by d, o is m by n by d,
 // Θ(1) depth, Θ(mnd) work,
 // prods(d, n, v, p, o)(m, n, d);
 __kernel void prods(const size_t d,

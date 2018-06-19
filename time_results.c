@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
   char save_test = 0, progress = 0, use_cpu = 0;
   opterr = 0;
   int c;
-  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hzv")) != -1)
+  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hzvc")) != -1)
     switch(c) {
     case '?':
       fprintf(stderr, "Unknown option %c or missing argument.\n", optopt);

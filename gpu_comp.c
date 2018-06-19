@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 cl_context gpu_context;
+cl_device_id the_gpu;
 
 void diequick(const char *errinfo, const void *a,
 		      size_t b, void *c) {
@@ -24,6 +25,9 @@ void gpu_init(void) {
   for(cl_uint i = 0; i < nplat; i++) {
     cl_uint ndev;
     if(clGetDeviceIDs(plats[i],
+#ifndef OSX
+		      CL_DEVICE_TYPE_CPU |
+#endif
 		      CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
 		      0, NULL, &ndev) != CL_SUCCESS) {
       fprintf(stderr, "Error running clGetDeviceIDs.\n");
@@ -31,6 +35,9 @@ void gpu_init(void) {
     }
     cl_device_id *devs = malloc(sizeof(cl_device_id) * ndev);
     if(clGetDeviceIDs(plats[i],
+#ifdef OSX
+		      CL_DEVICE_TYPE_CPU |
+#endif
 		      CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
 		      ndev, devs, NULL) != CL_SUCCESS) {
       fprintf(stderr, "Error running clGetDeviceIDs.\n");
@@ -45,12 +52,13 @@ void gpu_init(void) {
       }
       if(f & CL_FP_INF_NAN) {
 	cl_platform_id mplat = plats[i];
-	cl_device_id the_gpu = devs[j];
+	the_gpu = devs[j];
 	free(plats);
 	free(devs);
-	cl_context_properties props[2];
+	cl_context_properties props[3];
 	props[0] = CL_CONTEXT_PLATFORM;
 	props[1] = (cl_context_properties)mplat;
+	props[2] = 0;
 	cl_int error;
 	gpu_context = clCreateContext(props, 1, &the_gpu,
 				      diequick, NULL, &error);

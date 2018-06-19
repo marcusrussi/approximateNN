@@ -4,8 +4,14 @@ LIB_OFILES := algc.o rand_pr.o algg.o ann.o gpu_comp.o
 TEST_OFILES := time_results.o test_correctness.o compare_results.o
 OFILES := $(LIB_OFILES) randNorm.o $(TEST_OFILES)
 FAKE_HFILES := time_results.h test_correctness.h compare_results.h
-OSOPT := -DOSX
 WARNS := -Wall -Wextra -Wpedantic
+OS := $(shell uname -s)
+
+ifeq ("$(OS)", "Darwin")
+	OSOPT := -DOSX
+else
+	OSOPT := -DLINUX
+endif
 
 .PHONY: clean
 
