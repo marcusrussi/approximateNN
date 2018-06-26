@@ -19,8 +19,8 @@ all: $(EFILES)
 clean: 
 	rm -rf $(EFILES) $(OFILES)
 
-algc.o: ocl2c.h compute.cl rand_pr.h ann.h
-algg.o: ann.h rand_pr.h gpu_comp.h
+algc.o: ocl2c.h compute.cl rand_pr.h ann.h alg.c
+algg.o: ann.h rand_pr.h gpu_comp.h alg.c
 
 ann.o: algc.h algg.h
 
@@ -46,4 +46,4 @@ $(FAKE_HFILES): %.h:
 	touch $@
 
 $(OFILES): %.o: %.c %.h
-	cc -c $(OSOPT) $(WARNS) $<
+	cc -c -g $(OSOPT) $(WARNS) $<
