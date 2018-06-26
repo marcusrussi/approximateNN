@@ -354,19 +354,6 @@ __kernel void add_cols_step(const size_t height,
   mat[(x * k + y) * height + z] += mat[(x * k + y) * height + z + s/2] + g;
 }
 
-// If mat is n by (k - s) by d,
-// out is n by k,
-// Θ(1) depth, Θ(n(k - s)) work,
-// add_cols_fin(d, k, s, mat, out)(n, k - s);
-__kernel void add_cols_fin(const size_t height,
-			   const size_t k,
-			   const size_t skip,
-			   __global const double *mat,
-			   __global double *out) {
-  size_t x = get_global_id(0), y = get_global_id(1);
-  out[x * k + y + skip] = mat[(x * (k - skip) + y) * height];
-}
-
 // Sorting:
 // nth = 1 << ceil(lg(k) - 4);
 // if(nth <= max_conc_threads)
@@ -430,32 +417,6 @@ __kernel void rdups(const size_t count,
 		    __global double *order) {
   size_t x = get_global_id(0) * count, y = get_global_id(1);
   order[x + y] += 1.0 / (along[x + y] != along[x + y + 1]) - 1;
-}
-
-// Copies column heads.
-// If from is n by k+d, to is n by b+k+a,
-// Θ(1) depth, Θ(nk) work,
-// copy_some_ints(k+d, b+k+a, b, from, to)(n, k);
-__kernel void copy_some_ints(const size_t height_pre,
-			     const size_t height_post,
-			     const size_t start_post,
-			     __global const size_t *from,
-			     __global size_t *to) {
-  size_t x = get_global_id(0), y = get_global_id(1);
-  to[x * height_post + start_post + y] = from[x * height_pre + y];
-}
-
-// Copies column heads.
-// If from is n by k+d, to is n by b+k+a,
-// Θ(1) depth, Θ(nk) work,
-// copy_some_floats(k+d, b+k+a, b, from, to)(n, k);
-__kernel void copy_some_floats(const size_t height_pre,
-			       const size_t height_post,
-			       const size_t start_post,
-			       __global const double *from,
-			       __global double *to) {
-  size_t x = get_global_id(0), y = get_global_id(1);
-  to[x * height_post + start_post + y] = from[x * height_pre + y];
 }
 
 // Note: long is the same length as double, we're doing bit tricks here!
