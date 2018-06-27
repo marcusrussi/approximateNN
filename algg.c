@@ -501,6 +501,16 @@ static cl_mem subbuf(cl_mem b, size_t off, size_t sz) {
 			   &bci, NULL));
 }
 
+static void waitForQueueThenCall(cl_command_queue q,
+				 void (*f)(cl_event e, cl_int s, void *d),
+				 void *a) {
+  cl_event e;
+  clEnqueueMarkerWithWaitlist(q, 0, NULL, &e);
+  clSetEventCallback(e, CL_COMPLETE, f, a);
+}
+					
+#define OINT cl_int
+#define OEVENT cl_event;
 #define LOOP1(q, a, x) enqueue1D(q, cr_ ## a, x)
 #define LOOP2(q, a, x, y) enqueue2D(q, cr_ ## a, x, y)
 #define LOOP3(q, a, x, y, z) enqueue3D(q, cr_ ## a, x, y, z)

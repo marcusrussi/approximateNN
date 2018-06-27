@@ -92,5 +92,8 @@ static void *mbc(size_t k, const void *src) {
 #define relMemU(m)
 #define clFinish(q)
 #define clReleaseCommandQueue(q)
+#define waitForQueueThenCall(q, f, a) f(0, 0, a)
+#define OINT char
+#define OEVENT char
 
 #include "alg.c"

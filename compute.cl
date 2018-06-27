@@ -59,8 +59,7 @@ __kernel void add_rows_step_0(const size_t height, const size_t len,
 #else
   double g = !x && len % 2? a[(len - 1) * height + y] : 0;
 #endif
-  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;
-    
+  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;  
 }
 
 // If r is n by d,

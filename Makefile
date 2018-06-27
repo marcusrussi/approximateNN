@@ -17,7 +17,7 @@ endif
 
 all: $(EFILES)
 clean: 
-	rm -rf $(EFILES) $(OFILES)
+	rm -rf $(EFILES) $(OFILES) *.dSYM
 
 algc.o: ocl2c.h compute.cl rand_pr.h ann.h alg.c
 algg.o: ann.h rand_pr.h gpu_comp.h alg.c

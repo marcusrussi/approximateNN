@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 	      "\t-c\t\tUse the CPU instead of the GPU\n"
 	      "\t-d n\t\tSet the dimensionality to n (default 80)\n"
 	      "\t-h\t\tPrint this help text\n"
-	      "\t-k n\t\tRequest k nearest neighbors (default 10)\n"
+	      "\t-k n\t\tRequest n nearest neighbors (default 10)\n"
 	      "\t-n n\t\tSet the point count to n (default 1000)\n"
 	      "\t-o n\t\tSet the number of repetitions to average over to n"
 	      " (default 100)\n"
