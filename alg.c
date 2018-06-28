@@ -15,30 +15,30 @@ typedef struct {
 } ortho_info;
 
 #ifndef ocl2c
-#define FST_GONLY(x, ...) x(__VA_ARGS__)
-#define TWO_GONLY(x, ...) x(__VA_ARGS__)
+#define FST_GONLY_INT(x, ...) x(__VA_ARGS__)
+#define TWO_GONLY_INT(x, ...) x(__VA_ARGS__)
 #else
-#define FST_GONLY(x, y, ...) x(__VA_ARGS__)
-#define TWO_GONLY(x, y, z, ...) x(__VA_ARGS__)
+#define FST_GONLY_INT(x, y, ...) x(__VA_ARGS__)
+#define TWO_GONLY_INT(x, y, z, ...) x(__VA_ARGS__)
 #endif
 
-static rot_info FST_GONLY(make_rot_info,
-			  cl_context c,
-			  size_t rot_len,
-			  size_t rots,
-			  size_t dim) {
-  size_t *ri = malloc(sizeof(size_t) * len);
-  size_t *rj = malloc(sizeof(size_t) * len);
-  double *ra = malloc(sizeof(double) * len);
-  info roti;
+#define FST_GONLY(x, ...) FST_GONLY_INT(MK_NAME(x), __VA_ARGS__)
+#define TWO_GONLY(x, ...) TWO_GONLY_INT(MK_NAME(x), __VA_ARGS__)
+
+rot_info FST_GONLY(make_rot_info, cl_context c,
+		   size_t rot_len, size_t rots, size_t dim) {
+  size_t *ri = malloc(sizeof(size_t) * rot_len);
+  size_t *rj = malloc(sizeof(size_t) * rot_len);
+  double *ra = malloc(sizeof(double) * rot_len);
+  rot_info roti;
   roti.is = malloc(sizeof(BUFTYPE(size_t)) * rots);
   roti.js = malloc(sizeof(BUFTYPE(size_t)) * rots);
   roti.as = malloc(sizeof(BUFTYPE(double)) * rots);
   for(size_t j = 0; j < rots; j++) {
-    rand_rot(len, dim, ri, rj, ra);
-    roti.is[j] = MK_BUF_COPY_RO_NA(c, size_t, len, ri);
-    roti.js[j] = MK_BUF_COPY_RO_NA(c, size_t, len, rj);
-    roti.as[j] = MK_BUF_COPY_RO_NA(c, double, len, ra);
+    rand_rot(rot_len, dim, ri, rj, ra);
+    roti.is[j] = MK_BUF_COPY_RO_NA(c, size_t, rot_len, ri);
+    roti.js[j] = MK_BUF_COPY_RO_NA(c, size_t, rot_len, rj);
+    roti.as[j] = MK_BUF_COPY_RO_NA(c, double, rot_len, ra);
   }
   free(ri);
   free(rj);
@@ -46,29 +46,24 @@ static rot_info FST_GONLY(make_rot_info,
   return(roti);
 }
 
-static ortho_info FST_GONLY(make_ortho_info,
-			    cl_context c,
-			    size_t rot_len_b,
-			    size_t rots_b,
-			    size_t rot_len_a,
-			    size_t rots_a,
-			    size_t dim_low,
-			    size_t dim_high,
-			    size_t dim_max) {
+ortho_info FST_GONLY(make_ortho_info, cl_context c,
+		     size_t rot_len_b, size_t rots_b,
+		     size_t rot_len_a, size_t rots_a,
+		     size_t dim_low, size_t dim_high, size_t dim_max) {
   ortho_info orti;
   size_t *perm;
-  orti.rb = FST_GONLY(make_info, c, len_b, rots_b, dim_high);
-  orti.ra = FST_GONLY(make_info, c, len_a, rots_a, dim_low);
-  perm = rand_perm(d, d_max);
-  orti.perm_b = MK_BUF_COPY_RO_NA(c, size_t, d_max, perm);
+  orti.rb = FST_GONLY(make_rot_info, c, rot_len_b, rots_b, dim_high);
+  orti.ra = FST_GONLY(make_rot_info, c, rot_len_a, rots_a, dim_low);
+  perm = rand_perm(dim_high, dim_max);
+  orti.perm_b = MK_BUF_COPY_RO_NA(c, size_t, dim_max, perm);
   free(perm);
-  perm = rand_perm(d_short, d_max);
-  orti.perm_ai = MK_BUF_COPY_RO_NA(c, size_t, d_max, perm);
+  perm = rand_perm(dim_low, dim_max);
+  orti.perm_ai = MK_BUF_COPY_RO_NA(c, size_t, dim_max, perm);
   free(perm);
   return(orti);
 }
 
-static void free_rot_info(size_t rots, info r) {
+void MK_NAME(free_rot_info) (size_t rots, rot_info r) {
   for(size_t i = 0; i < rots; i++) {
     relMem(r.is[i]);
     relMem(r.js[i]);
@@ -79,58 +74,60 @@ static void free_rot_info(size_t rots, info r) {
   free(r.as);
 }
 
-static void free_ortho_info(size_t rots_b, size_t rots_a, ortho_info *o) {
-  free_info(rots_b, o->rb);
-  free_info(rots_a, o->ra);
+void MK_NAME(free_ortho_info) (size_t rots_b, size_t rots_a, ortho_info *o) {
+  MK_NAME(free_rot_info)(rots_b, o->rb);
+  MK_NAME(free_rot_info)(rots_a, o->ra);
   relMem(o->perm_b);
   relMem(o->perm_ai);
 }
+
+#define CLEANUP_DATA MK_NAME(cleanup_data)
 
 typedef struct {
   size_t rots_b, rots_a;
   ortho_info *o;
   int tries;
-} cleanup_stuff;
+} CLEANUP_DATA;
 
-static void cleanup(OEVENT e, OINT i, void *stuff) {
-  cleanup_stuff *trash = (cleanup_stuff *)stuff;
-  for(size_t i = 0; i < tries; i++)
-    free_ortho_info(trash->rots_b, trash->rots_a, trash->o + i);
+void MK_NAME(cleanup)(OEVENT e, OINT i, void *stuff) {
+  CLEANUP_DATA *trash = (CLEANUP_DATA *)stuff;
+  for(int i = 0; i < trash->tries; i++)
+    MK_NAME(free_ortho_info)(trash->rots_b, trash->rots_a, trash->o + i);
   free(trash->o);
 }
 
 
 // sgns may not have been written to.
 // Ensure queue is finished before reading it.
-static BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
-				 size_t n, size_t d_low,
-				 size_t d_high, size_t d_max,
-				 size_t rots_b, size_t rot_len_b,
-				 size_t rots_a, size_t rot_len_a,
-				 const ortho_info *o, BUFTYPE(double) points,
-				 size_t **sgns) {
+BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
+			  size_t n, size_t d_low,
+			  size_t d_high, size_t d_max,
+			  size_t rots_b, size_t rot_len_b,
+			  size_t rots_a, size_t rot_len_a,
+			  const ortho_info *o, BUFTYPE(double) points,
+			  size_t **sgns) {
   BUFTYPE(double) pc = MK_BUF_RW_NA(c, double, n * d_high);
   enqueueCopyBuf(q, sizeof(double) * n * d_high, points, pc);
-  for(size_t i = 0; j < rots_b; j++)   
-    LOOP2(q, apply_rotation(d_high, o->rb.is[j], o->rb.js[j], o->rb.as[j], pc),
+  for(size_t i = 0; i < rots_b; i++)   
+    LOOP2(q, apply_rotation(d_high, o->rb.is[i], o->rb.js[i], o->rb.as[i], pc),
 	  n, rot_len_b);
   BUFTYPE(double) pc2 = MK_BUF_RW_NA(c, double, n * d_max);
-  LOOP2(q, apply_permutation(d_high, d_max, perm_before, pc, pc2), n, d_max);
+  LOOP2(q, apply_permutation(d_high, d_max, o->perm_b, pc, pc2), n, d_max);
   relMem(pc);
   Walsh(q, d_max, n, pc2);
-  for(size_t j = 0; j < rots_after; j++)
-    LOOP2(q, apply_rotation(d_max, o->ra.is[j], o->ra.js[j], o->ra.as[j], pc2),
-	  n, rot_len_after);
+  for(size_t i = 0; i < rots_a; i++)
+    LOOP2(q, apply_rotation(d_max, o->ra.is[i], o->ra.js[i], o->ra.as[i], pc2),
+	  n, rot_len_a);
 
   pc = MK_BUF_RW_NA(c, double, n * d_low + 1);
-  LOOP2(q, apply_perm_inv(d_max, d_low, n * d_low, perm_after_i,
-			  pc2, pc), n, d_max);
+  LOOP2(q, apply_perm_inv(d_max, d_low, n * d_low, o->perm_ai, pc2, pc),
+	n, d_max);
   relMem(pc2);
   BUFTYPE(size_t) signs = MK_BUF_RW_NA(c, size_t, n);
 #ifndef ocl2c
-  LOOP1(q, compute_signs(d_short, pc, signs), n);
+  LOOP1(q, compute_signs(d_low, pc, signs), n);
 #else
-  LOOP1(q, compute_signs(d_short, (unsigned long *)pc, signs), n);
+  LOOP1(q, compute_signs(d_low, (unsigned long *)pc, signs), n);
 #endif
   relMem(pc);
   *sgns = malloc(sizeof(size_t) * n);
@@ -138,51 +135,66 @@ static BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
   return(signs);
 }
 
-static void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
-		      size_t n, size_t d_low, size_t d_high, size_t d_max,
-		      size_t rots_b, size_t rot_len_b,
-		      size_t rots_a, size_t rot_len_a,
-		      const ortho_info *o, double *loc) {
+void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
+	       size_t d_low, size_t d_high, size_t d_max,
+	       size_t rots_b, size_t rot_len_b,
+	       size_t rots_a, size_t rot_len_a,
+	       const ortho_info *o, double *loc) {
   double *vcs = malloc(sizeof(double) * d_low * d_low);
-  for(size_t j = 0; j < d_low; j++)
-    for(size_t l = 0; l < d_low; l++)
-      vcs[j * d_low + l] = l == j;
+  for(size_t i = 0; i < d_low; i++)
+    for(size_t j = 0; j < d_low; j++)
+      vcs[i * d_low + j] = i == j;
   BUFTYPE(double) vecs = MK_BUF_COPY_RO_NA(c, double, d_low * d_low, vcs);
   free(vcs);
   BUFTYPE(double) vecs2 = MK_BUF_RW_NA(c, double, d_low * d_max);
   LOOP2(q, apply_permutation(d_low, d_max, o->perm_ai, vecs, vecs2),
 	    d_low, d_max);
   relMem(vecs);
-  for(long j = rots_a - 1; j >= 0; j--)
-    LOOP2(q, apply_rotation(d_max, o->ra.js[j], o->ra.is[j], o->ra.as[j],
+  for(long i = rots_a - 1; i >= 0; i--)
+    LOOP2(q, apply_rotation(d_max, o->ra.js[i], o->ra.is[i], o->ra.as[i],
 			    vecs2), d_low, rot_len_a);
   Walsh(q, d_max, d_low, vecs2);
   vecs = MK_BUF_RW_NA(c, double, d_low * d_high + 1);
-  LOOP2(q, apply_perm_inv(d_max, d_high, d_low * d_high, perm_before,
+  LOOP2(q, apply_perm_inv(d_max, d_high, d_low * d_high, o->perm_b,
 			  vecs2, vecs), d_low, d_max);
   relMem(vecs2);
-  for(long j = rots_before - 1; j >= 0; j--)
-    LOOP2(q, apply_rotation(d_high, o->rb.js[j], o->ra.is[j], o->ra.as[j],
-			     vecs), d_low, rot_len_before);
+  for(long i = rots_b - 1; i >= 0; i--)
+    LOOP2(q, apply_rotation(d_high, o->rb.js[i], o->ra.is[i], o->ra.as[i],
+			     vecs), d_low, rot_len_b);
   enqueueReadBuf(q, sizeof(double) * d_low * d_high, vecs, loc);
   relMem(vecs);
 }
 
-static size_t FST_GONLY(sort_and_uniq, cl_command_queue q, size_t n,
-			size_t k, BUFTYPE(double) order,
-			BUFTYPE(size_t) along) {
+void FST_GONLY(sort_and_uniq, cl_command_queue q, size_t n,
+		 size_t k, BUFTYPE(size_t) along,
+		 BUFTYPE(double) order) {
   DoSort(q, k, n, along, order);
   LOOP2(q, rdups(k, along, order), n, k - 1);
   DoSort(q, k, n, along, order);
 }
 
-static void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
-		      size_t n, size_t k, size_t d_low, size_t d_high,
-		      save_t *save, int i,
-		      const size_t *sgns, BUFTYPE(size_t) signs,
-		      BUFTYPE(double) points,
-		      BUFTYPE(size_t) pointers_out,
-		      BUFTYPE(size_t) dists_out) {
+void TWO_GONLY(compdists, cl_context c, cl_command_queue q,
+	       size_t n, size_t k, size_t d, size_t ycnt, size_t s,
+	       BUFTYPE(const double) y, BUFTYPE(const double) points,
+	       BUFTYPE(size_t) pointers, BUFTYPE(double) dists) {
+  BUFTYPE(double) diffs = MK_BUF_RW_NA(c, double, k * d * ycnt);
+  LOOP3(q, compute_diffs_squared(d, k, n, s, pointers, y, points, diffs),
+	ycnt, k - s, d);
+  AddUpCols(q, d, k, s, ycnt, diffs, dists);
+  relMem(diffs);
+#ifdef ocl2c
+  pointers[ycnt * k] = n;
+  dists[ycnt * k] = 1.0/0;
+#endif
+}
+
+void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
+	       size_t n, size_t k, size_t d_low, size_t d_high,
+	       save_t *save, int i, int tries,
+	       const size_t *sgns, BUFTYPE(size_t) signs,
+	       BUFTYPE(const double) points,
+	       BUFTYPE(size_t) pointers_out,
+	       BUFTYPE(double) dists_out) {
   size_t *counts = malloc(sizeof(size_t) << d_low);
   for(size_t j = 0; j < 1 << d_low; j++)
     counts[j] = 0;
@@ -198,7 +210,6 @@ static void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
       wh[j * tmax + l] = n;
   for(size_t j = 0; j < n; j++)
     wh[sgns[j] * tmax + --counts[sgns[j]]] = j;
-  free(sgns);
   free(counts);
   BUFTYPE(size_t) which = MK_BUF_COPY_RO_NA(c, size_t, tmax << d_low, wh);
   if(save != NULL) {
@@ -212,15 +223,9 @@ static void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
 	n, d_low + 1, tmax);
   relMem(signs);
   relMem(which);
-  BUFTYPE(double) diffs = MK_BUF_RW_NA(gpu_context, double,
-				       (d_low + 1) * n * d_high * tmax);
-  LOOP3(q, compute_diffs_squared(d_high, (d_low + 1) * tmax, n, 0,
-				 which_d, pnts, pnts, diffs),
-	n, (d_low + 1) * tmax, d_high);
-  BUFTYPE(double) dists = MK_BUF_RW_NA(gpu_context, double,
-				       (d_low + 1) * n * tmax + 1);
-  AddUpCols(q, d_high, (d_low + 1) * tmax, 0, n, diffs, dists);
-  relMem(diffs);
+  BUFTYPE(double) dists = MK_BUF_RW_NA(c, double, (d_low + 1) * n * tmax + 1);
+  TWO_GONLY(compdists, c, q, n, (d_low + 1) * tmax, d_high, n, 0,
+	    points, points, which_d, dists);
   FST_GONLY(sort_and_uniq, q, n, (d_low + 1) * tmax, which_d, dists);
   enqueueCopy2D(q, size_t, (d_low + 1) * tmax, k * tries, k * i, which_d,
 		pointers_out, n, k);
@@ -228,6 +233,45 @@ static void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
   enqueueCopy2D(q, double, (d_low + 1) * tmax, k * tries, k * i, dists,
 		dists_out, n, k);
   relMem(dists);
+}
+
+// Dists is null if not precalculated.
+// Result is not guaranteed to be filled in, so wait on q.
+// pointers, dists should be ycnt by len;
+// graph should be n by k or equal to pointers;
+// y should be ycnt by d,
+// points should be n by d.
+// Releases pointers and dists, but nothing else.
+size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
+		  size_t n, size_t k, size_t d, size_t ycnt, size_t len,
+		  BUFTYPE(size_t) pointers, BUFTYPE(double) dists,
+		  BUFTYPE(const size_t) graph, BUFTYPE(const double) y,
+		  BUFTYPE(const double) points) {
+  if(dists == NULL) {
+    dists = MK_BUF_RW_NA(c, double, len * ycnt + 1);
+    TWO_GONLY(compdists, c, q, n, len, d, ycnt, 0, y, points, pointers, dists);
+  }
+  FST_GONLY(sort_and_uniq, q, ycnt, len, pointers, dists);
+  {
+    BUFTYPE(size_t) ipts = MK_BUF_RW_NA(c, size_t, k * (k + 1) * ycnt + 1);
+    enqueueCopy2D(q, size_t, len, k * (k + 1), 0, pointers, ipts, ycnt, k);
+    LOOP3(q, supercharge(n, len, pointers == graph? len : k, k,
+			 pointers, graph, ipts), ycnt, k, k);
+    relMem(pointers);
+    pointers = ipts;
+    BUFTYPE(double) dpts = MK_BUF_RW_NA(c, double, k * (k + 1) * ycnt + 1);
+    enqueueCopy2D(q, double, len, k * (k + 1), 0, dists, dpts, ycnt, k);
+    relMem(dists);
+    dists = dpts;
+  }
+  TWO_GONLY(compdists, c, q, n, k * (k + 1), d, ycnt, k,
+	    y, points, pointers, dists);
+  FST_GONLY(sort_and_uniq, q, ycnt, k * (k + 1), pointers, dists);
+  relMem(dists);
+  size_t *results = malloc(sizeof(size_t) * ycnt * k);
+  enqueueRead2D(q, size_t, k * (k + 1), k, 0, pointers, results, ycnt, k);
+  relMem(pointers);
+  return(results);
 }
 
 /* Starting point: */
@@ -283,7 +327,7 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
     inf[i] = FST_GONLY(make_ortho_info, gpu_context,
 		       rot_len_before, rots_before,
 		       rot_len_after, rots_after,
-		       d_short, d_long, d_max);
+		       d_short, d, d_max);
   size_t **sgns = malloc(sizeof(size_t *) * tries);
   BUFTYPE(size_t) *signs = malloc(sizeof(BUFTYPE(size_t)) * tries);
   for(int i = 0; i < tries; i++) {
@@ -292,49 +336,30 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
 			 rots_before, rot_len_before,
 			 rots_after, rot_len_after,
 			 inf + i, pnts, sgns + i);
-    TWO_GONLY(save_vecs, gpu_context, sq, n, d_short, d, d_max,
+    TWO_GONLY(save_vecs, gpu_context, sq, d_short, d, d_max,
 	      rots_before, rot_len_before, rots_after, rot_len_after,
 	      inf + i, save->bases + i * d_short * d);
   }
+  relMem(pnts);
   clFinish(q);
-  cleanup_stuff cup = {rots_before, rots_after, inf, tries};
-  waitForQueueThenCall(sq, cleanup, (void *)&cup);
+  CLEANUP_DATA cup = {rots_before, rots_after, inf, tries};
+  waitForQueueThenCall(sq, MK_NAME(cleanup), (void *)&cup);
+  BUFTYPE(const double) pnts2 =
+    MK_BUF_USE_RO_NA(gpu_context, double, n * d, points);
   for(int i = 0; i < tries; i++) {
-    TWO_GONLY(second_half, gpu_context, q, n, k, d_short, d_long,
-	      save, i, sgns[i], signs[i], pnts, pointers_out, dists_out);
+    TWO_GONLY(second_half, gpu_context, q, n, k, d_short, d, save, i, tries,
+	      sgns[i], signs[i], pnts2, pointers_out, dists_out);
     free(sgns[i]);
   }
   free(sgns);
   free(signs);
-  FST_GONLY(sort_and_uniq, q, n, k * tries, pointers_out, dists_out)
-  BUFTYPE(size_t) nedge = MK_BUF_RW_RO(gpu_context, size_t,
-				       n * k * (k + 1) + 1);
-  LOOP3(q, supercharge(n, k * tries, k * tries, k,
-		       pointers_out, pointers_out, nedge), n, k, k);
-  enqueueCopy2D(q, size_t, k * tries, k * (k + 1), 0, pointers_out, nedge,
-		n, k);
-  relMem(pointers_out);
-  BUFTYPE(double) ndists = MK_BUF_RW_NA(gpu_context, double,
-					n * k * (k + 1) + 1);
-  enqueueCopy2D(q, double, k * tries, k * (k + 1), 0, dists_out, ndists, n, k);
-  relMem(dists_out);
-  BUFTYPE(double) diffs = MK_BUF_RW_NA(gpu_context, double, n * k * k * d);
-  LOOP3(q, compute_diffs_squared(d, k * (k + 1), n, k,
-			      nedge, pnts, pnts, diffs), n, k * k, d);
-  relMem(pnts);
-  AddUpCols(q, d, k * (k + 1), k, n, diffs, ndists);
-  relMem(diffs);
-#ifdef ocl2c
-  nedge[n * k * (k + 1)] = 0;
-  ndists[n * k * (k + 1)] = 0;
-#endif
-  FST_GONLY(sort_and_uniq, q, n, k * (k + 1), nedge, ndists);
-  relMem(ndists);
-  size_t *fedges = malloc(sizeof(size_t) * n * k);
+  size_t *fedges = TWO_GONLY(det_results, gpu_context, q,
+			     n, k, d, n, k * tries,
+			     pointers_out, dists_out,
+			     pointers_out, pnts2, pnts2);
+  relMemU(pnts2);
   if(save != NULL)
     save->graph = fedges;
-  enqueueRead2D(q, size_t, k * (k + 1), k, 0, nedge, fedges, n, k);
-  relMem(nedge);
   clFinish(q);
   clReleaseCommandQueue(q);
   clFinish(sq);
@@ -413,57 +438,18 @@ size_t *MK_NAME(query) (const save_t *save, const double *points,
   relMem(signs);
   BUFTYPE(const double) y3 =
     MK_BUF_USE_RO_NA(gpu_context, double, save->d_long * ycnt, y);
-  BUFTYPE(double) diffs = MK_BUF_RW_NA(gpu_context, double,
-				       msofar * (save->d_short + 1) *
-				       save->d_long * ycnt);
   BUFTYPE(const double) pnts =
     MK_BUF_USE_RO_NA(gpu_context, double, save->n * save->d_long, points);
-  LOOP3(q, compute_diffs_squared(save->d_long, msofar * (save->d_short + 1),
-			      save->n, 0, ipts, y3, pnts, diffs),
-	ycnt, msofar * (save->d_short + 1), save->d_long);
-  BUFTYPE(double) dpts =
-    MK_BUF_RW_NA(gpu_context, double, msofar * (save->d_short + 1) * ycnt + 1);
-  AddUpCols(q, save->d_long, msofar * (save->d_short + 1), 0, ycnt,
-	      diffs, dpts);
-  relMem(diffs);
-  FST_GONLY(sort_and_uniq, q, ycnt, msofar * (save->d_short + 1), ipts, dpts);
-  {
-    BUFTYPE(size_t) ipts2 = MK_BUF_RW_NA(gpu_context, size_t,
-					 save->k * (save->k + 1) * ycnt + 1);
-    enqueueCopy2D(q, size_t, msofar * (save->d_short + 1),
-		  save->k * (save->k + 1), 0, ipts, ipts2, ycnt, save->k);
-    BUFTYPE(size_t) graph = MK_BUF_USE_RO_NA(gpu_context, size_t,
-					     save->n * save->k, save->graph);
-    LOOP3(q, supercharge(save->n, msofar * (save->d_short + 1),
-			 save->k, save->k, ipts, graph, ipts2),
-	  ycnt, save->k, save->k);
-    relMem(ipts);
-    relMemU(graph);
-    ipts = ipts2;
-    BUFTYPE(double) dpts2 = MK_BUF_RW_NA(gpu_context, double,
-					 save->k * (save->k + 1) * ycnt + 1);
-    enqueueCopy2D(q, double, msofar * (save->d_short + 1),
-		  save->k * (save->k + 1), 0, dpts, dpts2, ycnt, save->k);
-    relMem(dpts);
-    dpts = dpts2;
-  }
-  diffs = MK_BUF_RW_NA(gpu_context, double,
-		       save->k * save->k * save->d_long * ycnt);
-  LOOP3(q, compute_diffs_squared(save->d_long, save->k * (save->k + 1),
-				 save->n, save->k, ipts, y3, pnts, diffs),
-	ycnt, save->k * save->k, save->d_long);
-  relMemU(pnts);
+  BUFTYPE(const size_t) graph =
+    MK_BUF_USE_RO_NA(gpu_context, size_t, save->n * save->k, save->graph);
+  size_t *ans = TWO_GONLY(det_results, gpu_context, q,
+			  save->n, save->k, save->d_long, ycnt,
+			  msofar * (save->d_short + 1), ipts, NULL,
+			  graph, y3, pnts);
   relMemU(y3);
-  AddUpCols(q, save->d_long, save->k * (save->k + 1), save->k, ycnt,
-	      diffs, dpts);
-  relMem(diffs);
-  FST_GONLY(sort_and_uniq, q, ycnt, save->k * (save->k + 1), ipts, dpts);
-  relMem(dpts);
-  size_t *results = malloc(sizeof(size_t) * ycnt * save->k);
-  enqueueRead2D(q, size_t, save->k * (save->k + 1), save->k, 0,
-		ipts, results, ycnt, save->k);
-  relMem(ipts);
+  relMemU(pnts);
+  relMemU(graph);
   clFinish(q);
   clReleaseCommandQueue(q);
-  return(results);
+  return(ans);
 }
