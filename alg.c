@@ -367,6 +367,23 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
   return(fedges);
 }
 
+// Frees subsigns (soft).
+void TWO_GONLY(shufcomp, cl_context c, cl_command_queue q, size_t d,
+	       size_t ycnt, size_t offset, size_t len, size_t flen,
+	       BUFTYPE(const size_t) subsigns,
+	       const size_t *which,
+	       BUFTYPE(size_t) ipts) {	       
+  BUFTYPE(size_t) ppts = MK_BUF_RW_NA(q, size_t, len * (d + 1) * ycnt);
+  BUFTYPE(const size_t) wp =
+    MK_BUF_USE_RO_NA(q, size_t, len << d, which);
+  LOOP3(q, compute_which(d, len, subsgns, wp, ppts), ycnt, d + 1, len);
+  relMemU(subsigns);
+  relMemU(wp);
+  enqueueCopy2D(q, size_t, len * (d + 1), flen * (d + 1), offset * (d + 1),
+		ppts, ipts, ycnt, len * (d + 1));
+  relMem(ppts);
+}
+
 // We now have points (n by d_long), save->graph (n by k),
 // save->row_means (d_long), save->par_maxes (tries),
 // save->which_par (tries, then 1 << d_short by save->par_maxes[i]),
@@ -414,25 +431,10 @@ size_t *MK_NAME(query) (const save_t *save, const double *points,
   BUFTYPE(size_t) ipts = MK_BUF_RW_NA(gpu_context, size_t,
 				      msofar * (save->d_short + 1) * ycnt + 1);
   for(int i = 0; i < save->tries; i++) {
-    BUFTYPE(size_t) ppts = MK_BUF_RW_NA(gpu_context, size_t,
-					(save->d_short + 1) * ycnt *
-					save->par_maxes[i]);
     BUFTYPE(size_t) subsgns =
       MK_SUBBUF_RO_NA_REG(size_t, signs, i * ycnt, ycnt);
-    BUFTYPE(const size_t) wp =
-      MK_BUF_USE_RO_NA(gpu_context, size_t,
-		       save->par_maxes[i] << save->d_short,
-		       save->which_par[i]);
-    LOOP3(q, compute_which(save->d_short, save->par_maxes[i],
-			   subsgns, wp, ppts),
-	  ycnt, save->d_short + 1, save->par_maxes[i]);
-    relMemU(subsgns);
-    relMemU(wp);
-    enqueueCopy2D(q, size_t, save->par_maxes[i] * (save->d_short + 1),
-		  msofar * (save->d_short + 1),
-		  pmaxes[i] * (save->d_short + 1),
-		  ppts, ipts, ycnt, save->par_maxes[i] * (save->d_short + 1));
-    relMem(ppts);
+    TWO_GONLY(shufcomp, gpu_context, q, save->d_short, ycnt, pmaxes[i],
+	      save->par_maxes[i], msofar, subsgns, save->which_par[i], ipts);
   }
   free(pmaxes);
   relMem(signs);
