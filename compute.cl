@@ -24,25 +24,13 @@ __kernel void add_rows(const size_t height, const size_t len,
 		    __global const double *a,
 		    __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-#ifndef ocl2c
-  double g = as_double(-(ulong)((!x) & len & 1) &
-	      as_ulong(a[(len - 1) * height + y]));
-#else
   double g = !x && len % 2? g = a[(len - 1) * height + y] : 0;
-#endif
   r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;
-  for(size_t s = len >> 2, os = (len>>1)&1; s > 0; os = s & 1, s >>= 1) {
+  for(size_t s = len >> 2, os = len >> 1; s > 0; os = s, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
-#ifndef ocl2c
-    g = as_double(-(ulong)(x < s) & as_ulong(r[(x + s) * height + y]));
-    double h = as_double(-(ulong)((!x) & os) &
-			 as_ulong(r[s * 2 * height + y]));
-#else
-    g = x < s? r[(x + s) * height + y] : 0;
-    double h = !x && os? r[s * 2 * height + y] : 0;
-#endif
-    r[x * height + y] += g + h;
-      
+    if(x >= s) break;
+    double h = os & !x? r[s * 2 * height + y] : 0;
+    r[x * height + y] += r[(x + s) * height + y] + h;
   }
 }
 
@@ -53,12 +41,7 @@ __kernel void add_rows_step_0(const size_t height, const size_t len,
 			      __global const double *a,
 			      __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-#ifndef ocl2c
-  double g = as_double(-(ulong)((!x) & len & 1) &
-		       as_ulong(a[(len - 1) * height + y]));
-#else
-  double g = !x && len % 2? a[(len - 1) * height + y] : 0;
-#endif
+  double g = len & !x? a[(len - 1) * height + y] : 0;
   r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;  
 }
 
@@ -68,12 +51,7 @@ __kernel void add_rows_step_0(const size_t height, const size_t len,
 __kernel void add_rows_step_n(const size_t height, const size_t len,
 			      __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-#ifndef ocl2c
-  double g = as_double(-(ulong)((!x) & len & 1) &
-		       as_ulong(r[(len - 1) * height + y]));
-#else
   double g = !x && len % 2 ? r[(len - 1) * height + y] : 0;
-#endif
   r[x * height + y] += r[(x + len / 2) * height + y] + g;
 }
 
@@ -127,34 +105,19 @@ __kernel void apply_permutation(const size_t height_pre,
 				__global const double *a,
 				__global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-#ifndef ocl2c
-  ulong p = -(ulong)(perm[y] < height_pre);
-  double g = as_double(p & as_ulong(a[x * height_pre + perm[y]]));
-#else
   double g = perm[y] < height_pre? a[x * height_pre + perm[y]] : 0;
-#endif
   r[x * height_post + y] = g;
-
-
-
 }
   
 // Undoes apply_permutation.
 __kernel void apply_perm_inv(const size_t height_pre,
 			     const size_t height_post,
-			     const size_t garbage,
 			     __global const size_t *perm,
 			     __global const double *a,
 			     __global double *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-#ifndef ocl2c
-  ulong p = -(ulong)(perm[y] < height_post);
-  size_t z = (x * height_post + perm[y]) & p;
-  z |= ~p & garbage;
-#else
-  size_t z = perm[y] < height_post? x * height_post + perm[y] : garbage;
-#endif
-  r[z] = a[x * height_pre + y];
+  if(perm[y] < height_post)
+    r[x * height_post + perm[y]] = a[x * height_pre + y];
 }
 
 // Walsh transform:
@@ -201,26 +164,15 @@ __kernel void apply_walsh(const size_t lheight,
   default:;
   }
   for(size_t step = 0, s = 1; step < lheight; step++, s <<= 1) {
-    if(step & 1)
-      for(int j = 0; j < 8; j++) {
-	size_t y1 = y << 3 | j;
-	size_t yh = (y1 >> step) << step;
-	size_t yl = y1 ^ yh;
-	size_t ya = yh << 1 | yl;
-	double alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
-	a[x << lheight | ya] = (alpha + beta) / 2;
-	a[x << lheight | ya | s] = (alpha - beta) / 2;
-      }
-    else
-      for(int j = 0; j < 8; j++) {
-	size_t y1 = y << 3 | j;
-	size_t yh = (y1 >> step) << step;
-	size_t yl = y1 ^ yh;
-	size_t ya = yh << 1 | yl;
-	double alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
-	a[x << lheight | ya] = alpha + beta;
-	a[x << lheight | ya | s] = alpha - beta;
-      }
+    for(int j = 0; j < 8; j++) {
+      size_t y1 = y << 3 | j;
+      size_t yh = (y1 >> step) << step;
+      size_t yl = y1 ^ yh;
+      size_t ya = yh << 1 | yl;
+      double alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
+      a[x << lheight | ya] = (alpha + beta) / (step % 2 + 1);
+      a[x << lheight | ya | s] = (alpha - beta) / (step % 2 + 1);
+    }
       barrier(CLK_GLOBAL_MEM_FENCE);
   }
   if(lheight & 1)
@@ -238,26 +190,16 @@ __kernel void apply_walsh_step(const size_t lheight,
   size_t x = get_global_id(0) << lheight, y = get_global_id(1);
   if(!lheight)
     return;
-  if(step & 1)
-    for(int j = 0; j < 8 && j < 1 << lheight; j++) {
+  for(int j = 0; j < 8 && j < 1 << lheight; j++) {
       size_t y1 = y << 3 | j;
       size_t yh = (y1 >> step) << step;
       size_t yl = y1 ^ yh;
       size_t ca = x | yh << 1 | yl;
       size_t cb = ca | 1 << step;
       double alpha = a[ca], beta = a[cb];
-      a[ca] = (alpha + beta) / 2, a[cb] = (alpha - beta) / 2;
-    }
-  else
-    for(int j = 0; j < 8 && j < 1 << lheight; j++) {
-      size_t y1 = y << 3 | j;
-      size_t yh = (y1 >> step) << step;
-      size_t yl = y1 ^ yh;
-      size_t ca = x | yh << 1 | yl;
-      size_t cb = ca | 1 << step;
-      double alpha = a[ca], beta = a[cb];
-      a[ca] = alpha + beta, a[cb] = alpha - beta;
-    }
+      a[ca] = (alpha + beta) / (step % 2 + 1);
+      a[cb] = (alpha - beta) / (step % 2 + 1);
+  }
   if(step == 0 && lheight % 2)
     for(int j = 0; j < 16 && j < 1 << lheight; j++)
       a[x | y << 4 | j] *= rsr;
@@ -313,24 +255,14 @@ __kernel void add_cols(const size_t height,
 		       __global double *out) {
   size_t j = k - skip;
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-#ifndef ocl2c
-  double g = as_double(-((!z) & height & 1) &
-	      as_ulong(mat[(x * j + y + 1) * height - 1]));
-#else
-  double g = !z && height % 2? mat[(x * j + y + 1) * height - 1] : 0;
-#endif
+  double g = height & !z? mat[(x * j + y + 1) * height - 1] : 0;
   mat[(x * j + y) * height + z] +=
     mat[(x * j + y) * height + z + height / 2] + g;
-  for(size_t s = height >> 2, os = (height>>1)&1; s > 0; os = s & 1, s >>= 1) {
+  for(size_t s = height >> 2, os = (height>>1); s > 0; os = s, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
-#ifndef ocl2c
-    g = as_double((z < s) & as_ulong(mat[(x * j + y) * height + z + s]));
-    double h = as_double(-((!z) & os) &
-			 as_ulong(mat[(x * j + y) * height + s * 2]));
-#else
-    g = z < s? mat[(x * j + y) * height + z + s] : 0;
-    double h = !z && os? mat[(x * j + y) * height + s * 2] : 0;
-#endif
+    if(z >= s) break;
+    g = mat[(x * j + y) * height + z + s];
+    double h = os & !z? mat[(x * j + y) * height + s * 2] : 0;
     mat[(x * j + y) * height + z] += g + h;
   }
   out[x * k + y + skip] = mat[(x * j + y) * height];
@@ -344,12 +276,7 @@ __kernel void add_cols_step(const size_t height,
 			    const size_t k,
 			    __global double *mat) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-#ifndef ocl2c
-  double g = as_double(-((!z) & s) &
-		       as_ulong(mat[(x * k + y) * height + s - 1]));
-#else
-  double g = !z && s % 2? mat[(x * k + y) * height + s - 1] : 0;
-#endif
+  double g = s & !z? mat[(x * k + y) * height + s - 1] : 0;
   mat[(x * k + y) * height + z] += mat[(x * k + y) * height + z + s/2] + g;
 }
 
@@ -366,7 +293,6 @@ __kernel void add_cols_step(const size_t height,
 // Θ(1) depth, Θ(nk) work,
 // sort_two_step(k, n, s, ss, along, order)(n, 1 << ceil(lg(k) - 4));
 __kernel void sort_two_step(const size_t count,
-			    const size_t n,
 			    const int step,
 			    const int sstep,
 			    __global size_t *along,
@@ -380,12 +306,13 @@ __kernel void sort_two_step(const size_t count,
     if(sstep == step)
       y_low = (1 << sstep) - y_low - 1;
     size_t y_b = y_high << 1 | 1 << sstep | y_low;
-    ulong trash = -(count > y_b);
-    size_t alpha = (trash & (x + y_a)) | (~trash & (n * count));
-    size_t beta = (trash & (x + y_b)) | (~trash & (n * count));
+    if(count <= y_b)
+      break;
+    size_t alpha = x + y_a;
+    size_t beta = x + y_b;
     double ao = order[alpha], bo = order[beta];
     size_t aa = along[alpha], ba = along[beta];
-    ulong doswap = -(ao > bo);
+    ulong doswap = -(ao > bo); // minimize divergence.
     alpha ^= beta, beta ^= alpha & doswap, alpha ^= beta;
     along[alpha] = aa, along[beta] = ba;
     order[alpha] = ao, order[beta] = bo;
@@ -397,7 +324,6 @@ __kernel void sort_two_step(const size_t count,
 // Θ((lg k)^2) depth, Θ(nk (lg k)^2) work,
 // sort_two(k, n, along, order)(n, 1 << max(ceil(lg(k) - 4), 0))(1);
 __kernel void sort_two(const size_t count,
-		       const size_t n,
 		       __global size_t *along,
 		       __global double *order) {
   for(int step = 0; (count - 1) >> step; step++)

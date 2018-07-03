@@ -342,24 +342,22 @@ static void do_sort(cl_command_queue q, size_t k, size_t n,
     size_t foo[2] = {n, nth}, bar[2] = {1, nth};
     cl_kernel tk = clone_kernel(sort_two);
     ska(tk, 0, k);
-    ska(tk, 1, n);
-    ska(tk, 2, along);
-    ska(tk, 3, order);
+    ska(tk, 1, along);
+    ska(tk, 2, order);
     clEnqueueNDRangeKernel(q, tk, 2, NULL, foo, bar, 0, NULL, NULL);
     clReleaseKernel(tk);
   } else {
 #ifndef OSX
     cl_kernel t0 = clone_kernel(sort_two_step);
     ska(t0, 0, k);
-    ska(t0, 1, n);
-    ska(t0, 4, along);
-    ska(t0, 5, order);
+    ska(t0, 3, along);
+    ska(t0, 4, order);
     for(int s = 0; s < lk; s++) {
       cl_kernel t1 = clone_kernel(t0);
-      ska(t1, 2, s);
+      ska(t1, 1, s);
       for(int ss = s; ss >= 0; ss--) {
 	cl_kernel tk = clone_kernel(t1);
-	ska(tk, 3, ss);
+	ska(tk, 2, ss);
 	enqueue2D(q, tk, n, nth);
       }
       clReleaseKernel(t1);
@@ -370,11 +368,10 @@ static void do_sort(cl_command_queue q, size_t k, size_t n,
     for(int ss = s; ss >= 0; ss--) {
           cl_kernel tk = clone_kernel(sort_two_step);
 	  ska(tk, 0, k);
-	  ska(tk, 1, n);
-	  ska(tk, 2, s);
-	  ska(tk, 3, ss);
-	  ska(tk, 4, along);
-	  ska(tk, 5, order);
+	  ska(tk, 1, s);
+	  ska(tk, 2, ss);
+	  ska(tk, 3, along);
+	  ska(tk, 4, order);
 	  enqueue2D(q, tk, n, nth);
     }
 #endif
@@ -417,15 +414,14 @@ static cl_kernel cr_apply_permutation(size_t hb, size_t ha,
   return(k);
 }
 
-static cl_kernel cr_apply_perm_inv(size_t hb, size_t ha, size_t g,
+static cl_kernel cr_apply_perm_inv(size_t hb, size_t ha,
 				   cl_mem p, cl_mem a, cl_mem r) {
   cl_kernel k = clone_kernel(apply_perm_inv);
   ska(k, 0, hb);
   ska(k, 1, ha);
-  ska(k, 2, g);
-  ska(k, 3, p);
-  ska(k, 4, a);
-  ska(k, 5, r);
+  ska(k, 2, p);
+  ska(k, 3, a);
+  ska(k, 4, r);
   return(k);
 }
 static cl_kernel cr_compute_diffs_squared(size_t d, size_t c,

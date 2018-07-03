@@ -61,7 +61,7 @@ static void do_sort(size_t k, size_t n, size_t *along, double *order) {
   size_t nth = (size_t)1 << max(lk - 4, 0);
   for(int s = 0; s < lk; s++)
     for(int ss = s; ss >= 0; ss--)
-      LOOP2(, sort_two_step(k, n, s, ss, along, order), n, nth);
+      LOOP2(, sort_two_step(k, s, ss, along, order), n, nth);
 }
 
 static void *mbc(size_t k, const void *src) {

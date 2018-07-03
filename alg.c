@@ -1,6 +1,11 @@
 #define conc(a, b, c) a ## b ## c
 #define concb(a, b, c) conc(a, b, c)
 #define MK_NAME(x) concb(x, _, TYPE_OF_COMP)
+// hack to allow two versions of a function to be defined in separate files
+// with separate names, but only slightly different.
+
+#define rot_info MK_NAME(rot_info_int)
+#define ortho_info MK_NAME(ortho_info_int)
 
 typedef struct {
   BUFTYPE(size_t) *is;
@@ -14,6 +19,7 @@ typedef struct {
   BUFTYPE(size_t) perm_ai;
 } ortho_info;
 
+// Hacks to skip first (two) arguments if they are OpenCL types
 #ifndef ocl2c
 #define FST_GONLY_INT(x, ...) x(__VA_ARGS__)
 #define TWO_GONLY_INT(x, ...) x(__VA_ARGS__)
@@ -25,6 +31,7 @@ typedef struct {
 #define FST_GONLY(x, ...) FST_GONLY_INT(MK_NAME(x), __VA_ARGS__)
 #define TWO_GONLY(x, ...) TWO_GONLY_INT(MK_NAME(x), __VA_ARGS__)
 
+// Make a rot_info and fill it with rotations.
 rot_info FST_GONLY(make_rot_info, cl_context c,
 		   size_t rot_len, size_t rots, size_t dim) {
   size_t *ri = malloc(sizeof(size_t) * rot_len);
@@ -46,6 +53,7 @@ rot_info FST_GONLY(make_rot_info, cl_context c,
   return(roti);
 }
 
+// Make an ortho_info and fill it up with rotations and permutations
 ortho_info FST_GONLY(make_ortho_info, cl_context c,
 		     size_t rot_len_b, size_t rots_b,
 		     size_t rot_len_a, size_t rots_a,
@@ -63,6 +71,7 @@ ortho_info FST_GONLY(make_ortho_info, cl_context c,
   return(orti);
 }
 
+// Free the contents of a rot_info
 void MK_NAME(free_rot_info) (size_t rots, rot_info r) {
   for(size_t i = 0; i < rots; i++) {
     relMem(r.is[i]);
@@ -74,6 +83,7 @@ void MK_NAME(free_rot_info) (size_t rots, rot_info r) {
   free(r.as);
 }
 
+// Free the contents of an ortho_info
 void MK_NAME(free_ortho_info) (size_t rots_b, size_t rots_a, ortho_info *o) {
   MK_NAME(free_rot_info)(rots_b, o->rb);
   MK_NAME(free_rot_info)(rots_a, o->ra);
@@ -89,6 +99,7 @@ typedef struct {
   int tries;
 } CLEANUP_DATA;
 
+// Callback for cleanup of ortho_infos
 void MK_NAME(cleanup)(OEVENT e, OINT i, void *stuff) {
   CLEANUP_DATA *trash = (CLEANUP_DATA *)stuff;
   for(int i = 0; i < trash->tries; i++)
@@ -97,8 +108,13 @@ void MK_NAME(cleanup)(OEVENT e, OINT i, void *stuff) {
 }
 
 
-// sgns may not have been written to.
-// Ensure queue is finished before reading it.
+// Performs a random orthogonal operation + projection (supplied),
+// and returns the signs of every provided vector after that op,
+// shoved into a list of size_ts.
+// Returns that list two ways: as a BUFTYPE(size_t) (possibly a cl_mem),
+// and as a size_t * (sets *sgns to the address thereof).
+// The latter is not guaranteed to have been written to,
+// so wait for the queue you passed in to finish before reading it.
 BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
 			  size_t n, size_t d_low,
 			  size_t d_high, size_t d_max,
@@ -119,9 +135,8 @@ BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
     LOOP2(q, apply_rotation(d_max, o->ra.is[i], o->ra.js[i], o->ra.as[i], pc2),
 	  n, rot_len_a);
 
-  pc = MK_BUF_RW_NA(c, double, n * d_low + 1);
-  LOOP2(q, apply_perm_inv(d_max, d_low, n * d_low, o->perm_ai, pc2, pc),
-	n, d_max);
+  pc = MK_BUF_RW_NA(c, double, n * d_low);
+  LOOP2(q, apply_perm_inv(d_max, d_low, o->perm_ai, pc2, pc), n, d_max);
   relMem(pc2);
   BUFTYPE(size_t) signs = MK_BUF_RW_NA(c, size_t, n);
 #ifndef ocl2c
@@ -135,6 +150,10 @@ BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
   return(signs);
 }
 
+// Undoes the random orthogonal operation and projection (supplied),
+// on the basis vectors of the output (I.E., the input represents the
+// d_high by d_low matrix M, we want M^T)
+// and saves the results to the location given in loc.
 void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
 	       size_t d_low, size_t d_high, size_t d_max,
 	       size_t rots_b, size_t rot_len_b,
@@ -154,9 +173,9 @@ void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
     LOOP2(q, apply_rotation(d_max, o->ra.js[i], o->ra.is[i], o->ra.as[i],
 			    vecs2), d_low, rot_len_a);
   Walsh(q, d_max, d_low, vecs2);
-  vecs = MK_BUF_RW_NA(c, double, d_low * d_high + 1);
-  LOOP2(q, apply_perm_inv(d_max, d_high, d_low * d_high, o->perm_b,
-			  vecs2, vecs), d_low, d_max);
+  vecs = MK_BUF_RW_NA(c, double, d_low * d_high);
+  LOOP2(q, apply_perm_inv(d_max, d_high, o->perm_b, vecs2, vecs),
+	d_low, d_max);
   relMem(vecs2);
   for(long i = rots_b - 1; i >= 0; i--)
     LOOP2(q, apply_rotation(d_high, o->rb.js[i], o->ra.is[i], o->ra.as[i],
@@ -165,6 +184,11 @@ void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
   relMem(vecs);
 }
 
+// Pass it a pair of matrices, both n by k, one of doubles,
+// the other of size_ts.
+// Sorts both by the doubles along the columns,
+// but of all entries with the same size_t,
+// at most one will remain (the rest have the double set to infinity).
 void FST_GONLY(sort_and_uniq, cl_command_queue q, size_t n,
 		 size_t k, BUFTYPE(size_t) along,
 		 BUFTYPE(double) order) {
@@ -173,6 +197,7 @@ void FST_GONLY(sort_and_uniq, cl_command_queue q, size_t n,
   DoSort(q, k, n, along, order);
 }
 
+// Ugh, I dunno how to describe this. It computes certain distances.
 void TWO_GONLY(compdists, cl_context c, cl_command_queue q,
 	       size_t n, size_t k, size_t d, size_t ycnt, size_t s,
 	       BUFTYPE(const double) y, BUFTYPE(const double) points,
@@ -188,6 +213,8 @@ void TWO_GONLY(compdists, cl_context c, cl_command_queue q,
 #endif
 }
 
+// This (a) figures out what the candidates for near neighbors are,
+// and (b) computes the distances and sorts, then returns the k nearest.
 void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
 	       size_t n, size_t k, size_t d_low, size_t d_high,
 	       save_t *save, int i, int tries,
@@ -218,12 +245,12 @@ void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
   } else
     free(wh);
   BUFTYPE(size_t) which_d =
-    MK_BUF_RW_NA(c, size_t, (d_low + 1) * n * tmax + 1);
+    MK_BUF_RW_NA(c, size_t, (d_low + 1) * n * tmax);
   LOOP3(q, compute_which(d_low, tmax, signs, which, which_d),
 	n, d_low + 1, tmax);
   relMem(signs);
   relMem(which);
-  BUFTYPE(double) dists = MK_BUF_RW_NA(c, double, (d_low + 1) * n * tmax + 1);
+  BUFTYPE(double) dists = MK_BUF_RW_NA(c, double, (d_low + 1) * n * tmax);
   TWO_GONLY(compdists, c, q, n, (d_low + 1) * tmax, d_high, n, 0,
 	    points, points, which_d, dists);
   FST_GONLY(sort_and_uniq, q, n, (d_low + 1) * tmax, which_d, dists);
@@ -242,24 +269,28 @@ void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
 // y should be ycnt by d,
 // points should be n by d.
 // Releases pointers and dists, but nothing else.
+// Computes distances if necessary,
+// then sorts, tosses all but top k,
+// supercharges, recomputes distances, sorts,
+// tosses all but top k, returns new guesses.
 size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
 		  size_t n, size_t k, size_t d, size_t ycnt, size_t len,
 		  BUFTYPE(size_t) pointers, BUFTYPE(double) dists,
 		  BUFTYPE(const size_t) graph, BUFTYPE(const double) y,
 		  BUFTYPE(const double) points) {
   if(dists == NULL) {
-    dists = MK_BUF_RW_NA(c, double, len * ycnt + 1);
+    dists = MK_BUF_RW_NA(c, double, len * ycnt);
     TWO_GONLY(compdists, c, q, n, len, d, ycnt, 0, y, points, pointers, dists);
   }
   FST_GONLY(sort_and_uniq, q, ycnt, len, pointers, dists);
   {
-    BUFTYPE(size_t) ipts = MK_BUF_RW_NA(c, size_t, k * (k + 1) * ycnt + 1);
+    BUFTYPE(size_t) ipts = MK_BUF_RW_NA(c, size_t, k * (k + 1) * ycnt);
     enqueueCopy2D(q, size_t, len, k * (k + 1), 0, pointers, ipts, ycnt, k);
     LOOP3(q, supercharge(n, len, pointers == graph? len : k, k,
 			 pointers, graph, ipts), ycnt, k, k);
     relMem(pointers);
     pointers = ipts;
-    BUFTYPE(double) dpts = MK_BUF_RW_NA(c, double, k * (k + 1) * ycnt + 1);
+    BUFTYPE(double) dpts = MK_BUF_RW_NA(c, double, k * (k + 1) * ycnt);
     enqueueCopy2D(q, double, len, k * (k + 1), 0, dists, dpts, ycnt, k);
     relMem(dists);
     dists = dpts;
@@ -319,9 +350,9 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
   }
   relMem(row_sums);
   BUFTYPE(size_t) pointers_out =
-    MK_BUF_RW_NA(gpu_context, size_t, n * k * tries + 1);
+    MK_BUF_RW_NA(gpu_context, size_t, n * k * tries);
   BUFTYPE(double) dists_out =
-    MK_BUF_RW_NA(gpu_context, double, n * k * tries + 1);
+    MK_BUF_RW_NA(gpu_context, double, n * k * tries);
   ortho_info *inf = malloc(sizeof(ortho_info) * tries);
   for(int i = 0; i < tries; i++)
     inf[i] = FST_GONLY(make_ortho_info, gpu_context,
@@ -368,6 +399,7 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
 }
 
 // Frees subsigns (soft).
+// Computes the candidates and puts them in the right places.
 void TWO_GONLY(shufcomp, cl_context c, cl_command_queue q, size_t d,
 	       size_t ycnt, size_t offset, size_t len, size_t flen,
 	       BUFTYPE(const size_t) subsigns,
@@ -429,7 +461,7 @@ size_t *MK_NAME(query) (const save_t *save, const double *points,
 #endif
   relMem(dprds);
   BUFTYPE(size_t) ipts = MK_BUF_RW_NA(gpu_context, size_t,
-				      msofar * (save->d_short + 1) * ycnt + 1);
+				      msofar * (save->d_short + 1) * ycnt);
   for(int i = 0; i < save->tries; i++) {
     BUFTYPE(size_t) subsgns =
       MK_SUBBUF_RO_NA_REG(size_t, signs, i * ycnt, ycnt);
