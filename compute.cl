@@ -328,7 +328,7 @@ __kernel void sort_two(const size_t count,
 		       __global double *order) {
   for(int step = 0; (count - 1) >> step; step++)
     for(int sstep = step; sstep >= 0; sstep--)  {
-      sort_two_step(count, n, step, sstep, along, order);
+      sort_two_step(count, step, sstep, along, order);
       barrier(CLK_GLOBAL_MEM_FENCE);
     }
 }

@@ -405,10 +405,10 @@ void TWO_GONLY(shufcomp, cl_context c, cl_command_queue q, size_t d,
 	       BUFTYPE(const size_t) subsigns,
 	       const size_t *which,
 	       BUFTYPE(size_t) ipts) {	       
-  BUFTYPE(size_t) ppts = MK_BUF_RW_NA(q, size_t, len * (d + 1) * ycnt);
+  BUFTYPE(size_t) ppts = MK_BUF_RW_NA(c, size_t, len * (d + 1) * ycnt);
   BUFTYPE(const size_t) wp =
-    MK_BUF_USE_RO_NA(q, size_t, len << d, which);
-  LOOP3(q, compute_which(d, len, subsgns, wp, ppts), ycnt, d + 1, len);
+    MK_BUF_USE_RO_NA(c, size_t, len << d, which);
+  LOOP3(q, compute_which(d, len, subsigns, wp, ppts), ycnt, d + 1, len);
   relMemU(subsigns);
   relMemU(wp);
   enqueueCopy2D(q, size_t, len * (d + 1), flen * (d + 1), offset * (d + 1),
