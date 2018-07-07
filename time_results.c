@@ -82,7 +82,6 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Can\'t happen!\n");
       exit(1);
     }
-  if(!use_cpu)
     gpu_init();
   double time_used = 0;
   double *points = malloc(sizeof(double) * n * d);

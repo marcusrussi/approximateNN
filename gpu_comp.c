@@ -65,7 +65,8 @@ void gpu_init(void) {
 	if(error != CL_SUCCESS) {
 	  fprintf(stderr, "Error creating OpenCL context.\n");
 	  exit(1);
-	}	
+	}
+	return;
       }
     }
     free(devs);

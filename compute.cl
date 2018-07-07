@@ -28,7 +28,7 @@ __kernel void add_rows(const size_t height, const size_t len,
   r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;
   for(size_t s = len >> 2, os = len >> 1; s > 0; os = s, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
-    if(x >= s) break;
+    if(x >= s) return;
     double h = os & !x? r[s * 2 * height + y] : 0;
     r[x * height + y] += r[(x + s) * height + y] + h;
   }
@@ -260,12 +260,13 @@ __kernel void add_cols(const size_t height,
     mat[(x * j + y) * height + z + height / 2] + g;
   for(size_t s = height >> 2, os = (height>>1); s > 0; os = s, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
-    if(z >= s) break;
+    if(z >= s) return;
     g = mat[(x * j + y) * height + z + s];
     double h = os & !z? mat[(x * j + y) * height + s * 2] : 0;
     mat[(x * j + y) * height + z] += g + h;
   }
-  out[x * k + y + skip] = mat[(x * j + y) * height];
+  if(z == 0)
+    out[x * k + y + skip] = mat[(x * j + y) * height];
 }
 
 // If mat is n by k by d,
@@ -306,16 +307,16 @@ __kernel void sort_two_step(const size_t count,
     if(sstep == step)
       y_low = (1 << sstep) - y_low - 1;
     size_t y_b = y_high << 1 | 1 << sstep | y_low;
-    if(count <= y_b)
-      break;
-    size_t alpha = x + y_a;
-    size_t beta = x + y_b;
-    double ao = order[alpha], bo = order[beta];
-    size_t aa = along[alpha], ba = along[beta];
-    ulong doswap = -(ao > bo); // minimize divergence.
-    alpha ^= beta, beta ^= alpha & doswap, alpha ^= beta;
-    along[alpha] = aa, along[beta] = ba;
-    order[alpha] = ao, order[beta] = bo;
+    if(count > y_b) {
+      size_t alpha = x + y_a;
+      size_t beta = x + y_b;
+      double ao = order[alpha], bo = order[beta];
+      size_t aa = along[alpha], ba = along[beta];
+      ulong doswap = -(ao > bo); // minimize divergence.
+      alpha ^= beta, beta ^= alpha & doswap, alpha ^= beta;
+      along[alpha] = aa, along[beta] = ba;
+      order[alpha] = ao, order[beta] = bo;
+    }
   }
 }
 

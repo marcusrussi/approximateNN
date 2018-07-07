@@ -107,7 +107,6 @@ void MK_NAME(cleanup)(OEVENT e, OINT i, void *stuff) {
   free(trash->o);
 }
 
-
 // Performs a random orthogonal operation + projection (supplied),
 // and returns the signs of every provided vector after that op,
 // shoved into a list of size_ts.
@@ -138,7 +137,7 @@ BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
   pc = MK_BUF_RW_NA(c, double, n * d_low);
   LOOP2(q, apply_perm_inv(d_max, d_low, o->perm_ai, pc2, pc), n, d_max);
   relMem(pc2);
-  BUFTYPE(size_t) signs = MK_BUF_RW_NA(c, size_t, n);
+  BUFTYPE(size_t) signs = MK_BUF_RW_RO(c, size_t, n);
 #ifndef ocl2c
   LOOP1(q, compute_signs(d_low, pc, signs), n);
 #else
@@ -146,7 +145,7 @@ BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
 #endif
   relMem(pc);
   *sgns = malloc(sizeof(size_t) * n);
-  enqueueReadBuf(q, sizeof(size_t) * n, signs, sgns);
+  enqueueReadBuf(q, sizeof(size_t) * n, signs, *sgns);
   return(signs);
 }
 
@@ -173,12 +172,12 @@ void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
     LOOP2(q, apply_rotation(d_max, o->ra.js[i], o->ra.is[i], o->ra.as[i],
 			    vecs2), d_low, rot_len_a);
   Walsh(q, d_max, d_low, vecs2);
-  vecs = MK_BUF_RW_NA(c, double, d_low * d_high);
+  vecs = MK_BUF_RW_RO(c, double, d_low * d_high);
   LOOP2(q, apply_perm_inv(d_max, d_high, o->perm_b, vecs2, vecs),
 	d_low, d_max);
   relMem(vecs2);
   for(long i = rots_b - 1; i >= 0; i--)
-    LOOP2(q, apply_rotation(d_high, o->rb.js[i], o->ra.is[i], o->ra.as[i],
+    LOOP2(q, apply_rotation(d_high, o->rb.js[i], o->rb.is[i], o->rb.as[i],
 			     vecs), d_low, rot_len_b);
   enqueueReadBuf(q, sizeof(double) * d_low * d_high, vecs, loc);
   relMem(vecs);
@@ -207,12 +206,7 @@ void TWO_GONLY(compdists, cl_context c, cl_command_queue q,
 	ycnt, k - s, d);
   AddUpCols(q, d, k, s, ycnt, diffs, dists);
   relMem(diffs);
-#ifdef ocl2c
-  pointers[ycnt * k] = n;
-  dists[ycnt * k] = 1.0/0;
-#endif
 }
-
 // This (a) figures out what the candidates for near neighbors are,
 // and (b) computes the distances and sorts, then returns the k nearest.
 void TWO_GONLY(second_half, cl_context c, cl_command_queue q,
@@ -329,7 +323,7 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
   BUFTYPE(double) pnts =
     MK_BUF_COPY_RW_NA(gpu_context, double, n * d, points);
   BUFTYPE(double) row_sums;
-  if(save == NULL)
+  if(save != NULL)
     row_sums = MK_BUF_RW_RO(gpu_context, double, (n/2) * d);  
   else
     row_sums = MK_BUF_RW_NA(gpu_context, double, (n/2) * d);
@@ -367,9 +361,10 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
 			 rots_before, rot_len_before,
 			 rots_after, rot_len_after,
 			 inf + i, pnts, sgns + i);
-    TWO_GONLY(save_vecs, gpu_context, sq, d_short, d, d_max,
-	      rots_before, rot_len_before, rots_after, rot_len_after,
-	      inf + i, save->bases + i * d_short * d);
+    if(save != NULL)
+      TWO_GONLY(save_vecs, gpu_context, sq, d_short, d, d_max,
+		rots_before, rot_len_before, rots_after, rot_len_after,
+		inf + i, save->bases + i * d_short * d);
   }
   relMem(pnts);
   clFinish(q);
