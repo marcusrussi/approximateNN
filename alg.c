@@ -415,7 +415,6 @@ void TWO_GONLY(shufcomp, cl_context c, cl_command_queue q, size_t d,
 // save->row_means (d_long), save->par_maxes (tries),
 // save->which_par (tries, then 1 << d_short by save->par_maxes[i]),
 // save->bases (tries by d_short by d_long), y (ycnt by d_long).
-
 size_t *MK_NAME(query) (const save_t *save, const double *points,
 			size_t ycnt, const double *y) {
   MAKE_COMMAND_QUEUE(gpu_context, the_gpu, NULL, NULL, q);
@@ -431,6 +430,7 @@ size_t *MK_NAME(query) (const save_t *save, const double *points,
   BUFTYPE(double) cprds = MK_BUF_RW_NA(gpu_context, double,
 				       save->tries * ycnt *
 				       save->d_short * save->d_long);
+  // WHY IS THIS CAUSING SEGFAULTS IN OPENCL BUT NOT C?
   LOOP3(q, prods(save->d_long, save->tries * save->d_short, y2, bases, cprds),
 	ycnt, save->tries * save->d_short, save->d_long);
   relMemU(bases);
