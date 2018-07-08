@@ -278,7 +278,7 @@ size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
   }
   FST_GONLY(sort_and_uniq, q, ycnt, len, pointers, dists);
   {
-    BUFTYPE(size_t) ipts = MK_BUF_RW_NA(c, size_t, k * (k + 1) * ycnt);
+    BUFTYPE(size_t) ipts = MK_BUF_RW_RO(c, size_t, k * (k + 1) * ycnt);
     enqueueCopy2D(q, size_t, len, k * (k + 1), 0, pointers, ipts, ycnt, k);
     LOOP3(q, supercharge(n, len, pointers == graph? len : k, k,
 			 pointers, graph, ipts), ycnt, k, k);

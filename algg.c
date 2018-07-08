@@ -162,10 +162,10 @@ static void rd2D(cl_command_queue q,
   size_t src_ori[3] = {0, 0, 0};
   size_t dst_ori[3] = {0, start_post, 0};
   size_t reg[3] = {s, k, n};
-  if(clEnqueueCopyBufferRect(q, from, to, src_ori, dst_ori, reg,
+  if(clEnqueueReadBufferRect(q, from, CL_FALSE, src_ori, dst_ori, reg,
 			     s, height_pre * s,
 			     s, height_post * s,
-			     0, NULL, NULL) != CL_SUCCESS)
+			     to, 0, NULL, NULL) != CL_SUCCESS)
     fprintf(stderr, "Failed enqueue of copy.\n"), exit(1);
 }
 
