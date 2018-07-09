@@ -211,7 +211,7 @@ static void add_up_rows(cl_command_queue q, size_t d, size_t n,
   if(clGetKernelWorkGroupInfo(add_rows, NULL, CL_KERNEL_WORK_GROUP_SIZE,
 			      sizeof(size_t), &max_wgs, NULL) != CL_SUCCESS)
     fprintf(stderr, "Error reading info.\n"), exit(1);
-  if(n/2 <= max_wgs) {
+  if(n / 2 <= max_wgs) {
     size_t foo[2] = {n/2, d};
     size_t bar[2] = {n/2, 1};
     cl_kernel tk = clone_kernel(add_rows);
@@ -379,7 +379,6 @@ static void do_sort(cl_command_queue q, size_t k, size_t n,
 #endif
   }
 }
-
 		      
 static cl_kernel cr_divide_by_length(size_t len, cl_mem r) {
   cl_kernel k = clone_kernel(divide_by_length);

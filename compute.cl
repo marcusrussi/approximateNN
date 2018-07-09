@@ -399,6 +399,6 @@ __kernel void prods(const size_t d,
 		    __global const double *v,
 		    __global const double *p,
 		    __global double *o) {
-  size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(3);
+  size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
   o[(x * n + y) * d + z] = v[x * d + z] * p[y * d + z];
 }
