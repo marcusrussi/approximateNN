@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include "gpu_comp.h"
 
-void genRand(size_t n, size_t d, double *points) {
+void genRand(size_t n, size_t d, float *points) {
   for(size_t i = 0; i < n * d; i++)
     points[i] = rand_norm();
 }
@@ -85,14 +85,14 @@ int main(int argc, char **argv) {
   if(!use_cpu)
     gpu_init();
   double time_used = 0;
-  double *points = malloc(sizeof(double) * n * d);
+  float *points = malloc(sizeof(float) * n * d);
   if(ycnt) {
     save_t save;
     genRand(n, d, points);
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, use_cpu);
     if(progress)
       printf("Precomputation finished.\n");
-    double *y = malloc(sizeof(double) * ycnt * d);
+    float *y = malloc(sizeof(float) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff;
       tval start, end;

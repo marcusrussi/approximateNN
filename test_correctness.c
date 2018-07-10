@@ -6,15 +6,15 @@
 #include <limits.h>
 #include "gpu_comp.h"
 
-void genRand(size_t n, size_t d, double *points) {
+void genRand(size_t n, size_t d, float *points) {
   for(size_t i = 0; i < n * d; i++)
     points[i] = rand_norm();
 }
 
 double compute_score(size_t n, size_t k, size_t d,
-		     const double *points, const size_t *guess, double *scb);
+		     const float *points, const size_t *guess, double *scb);
 double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
-			   const double *points, const double *y,
+			   const float *points, const float *y,
 			   const size_t *guess, double *scb);
 
 int main(int argc, char **argv) {
@@ -90,14 +90,14 @@ int main(int argc, char **argv) {
   if(!use_cpu)
     gpu_init();
   double score = 0, scb = 0;
-  double *points = malloc(sizeof(double) * n * d);
+  float *points = malloc(sizeof(float) * n * d);
   if(use_y) {
     save_t save;
     genRand(n, d, points);
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, use_cpu);
     if(progress)
       printf("Precomputation finished.\n");
-    double *y = malloc(sizeof(double) * ycnt * d);
+    float *y = malloc(sizeof(float) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff;
       genRand(ycnt, d, y);
@@ -137,7 +137,7 @@ double cscore(size_t y, size_t n, size_t k,
 
 typedef struct {
   size_t point;
-  double dist;
+  float dist;
 } pairedup;
 
 int cpoint(const void *p, const void *q) {
@@ -154,10 +154,10 @@ int cpoint(const void *p, const void *q) {
 // inv_ans(n, 0, ans)[i * n + j] == inv_ans(n, n - 1, ans)[i * (n - 1) + j].
 size_t *inv_ans(size_t y, size_t n, const pairedup *ans);
 void compdists(size_t ycnt, size_t n, size_t d,
-	       pairedup *p, const double *y, const double *points);
+	       pairedup *p, const float *y, const float *points);
 
 double compute_score(size_t n, size_t k, size_t d,
-		     const double *points, const size_t *guess, double *scb) {
+		     const float *points, const size_t *guess, double *scb) {
   pairedup *ans = malloc(sizeof(pairedup) * n * (n - 1));
   for(size_t i = 0; i < n; i++)
     for(size_t j = 0, k = 0; j < n - 1; j++, k++) {
@@ -176,7 +176,7 @@ double compute_score(size_t n, size_t k, size_t d,
 }
 
 double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
-			   const double *points, const double *y,
+			   const float *points, const float *y,
 			   const size_t *guess, double *scb) {
   pairedup *ans = malloc(sizeof(pairedup) * ycnt * n);
   for(size_t i = 0; i < ycnt; i++)
@@ -193,14 +193,14 @@ double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
 }
 
 void compdists(size_t ycnt, size_t n, size_t d,
-	       pairedup *p, const double *y, const double *points) {
-  double *sds = malloc(sizeof(double) * d);
+	       pairedup *p, const float *y, const float *points) {
+  float *sds = malloc(sizeof(float) * d);
   for(size_t i = 0; i < ycnt; i++)
     for(size_t j = 0; j < n; j++) {
       pairedup *q = p + i * n + j;
       size_t qp = q->point;
       for(size_t k = 0; k < d; k++) {
-	double f = y[i * d + k] - points[qp * d + k];
+	float f = y[i * d + k] - points[qp * d + k];
 	sds[k] = f * f;
       }
       for(size_t step = d; step / 2; step /= 2) {

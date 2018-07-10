@@ -7,12 +7,12 @@
 #include <string.h>
 #include "gpu_comp.h"
 
-void genRand(size_t n, size_t d, double *points) {
+void genRand(size_t n, size_t d, float *points) {
   for(size_t i = 0; i < n * d; i++)
     points[i] = rand_norm();
 }
 
-// Note: 1024 ulp = 1 diff on ints ('twould be any diff on doubles,
+// Note: 1024 ulp = 1 diff on ints ('twould be any diff on floats,
 // but GPU/CPU differences)
 double cdiff_save(save_t *a, save_t *b);
 
@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
     }
   gpu_init();
   double score = 0;
-  double *points = malloc(sizeof(double) * n * d);
+  float *points = malloc(sizeof(float) * n * d);
   FILE *randomf = fopen("/dev/urandom", "r");
   if(use_y) {
     save_t save;
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 0);
     if(progress)
       printf("Precomputation finished.\n");
-    double *y = malloc(sizeof(double) * ycnt * d);
+    float *y = malloc(sizeof(float) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff, *other;
       char foo[256], bar[256];
@@ -145,7 +145,7 @@ double cdiff_save(save_t *a, save_t *b) {
   if(a->tries != b->tries || a->d_short != b->d_short ||
      a->k != b->k || a->d_long != b->d_long || a->n != b->n)
     return(ULONG_MAX);
-  size_t c = 0;
+  double c = 0;
   for(size_t i = 0; i < a->n * a->k; i++)
     c += a->graph[i] != b->graph[i];
   for(size_t i = 0; i < a->tries * a->d_short * a->d_long; i++)
