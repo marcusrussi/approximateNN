@@ -145,7 +145,7 @@ double cdiff_save(save_t *a, save_t *b) {
   if(a->tries != b->tries || a->d_short != b->d_short ||
      a->k != b->k || a->d_long != b->d_long || a->n != b->n)
     return(ULONG_MAX);
-  size_t c = 0;
+  double c = 0;
   for(size_t i = 0; i < a->n * a->k; i++)
     c += a->graph[i] != b->graph[i];
   for(size_t i = 0; i < a->tries * a->d_short * a->d_long; i++)

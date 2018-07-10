@@ -25,7 +25,7 @@ void gpu_init(void) {
   for(cl_uint i = 0; i < nplat; i++) {
     cl_uint ndev;
     if(clGetDeviceIDs(plats[i],
-#ifndef OSX
+#ifdef OSX
 		      CL_DEVICE_TYPE_CPU |
 #endif
 		      CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR,
