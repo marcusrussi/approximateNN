@@ -138,11 +138,7 @@ BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
   LOOP2(q, apply_perm_inv(d_max, d_low, o->perm_ai, pc2, pc), n, d_max);
   relMem(pc2);
   BUFTYPE(size_t) signs = MK_BUF_RW_RO(c, size_t, n);
-#ifndef ocl2c
   LOOP1(q, compute_signs(d_low, pc, signs), n);
-#else
-  LOOP1(q, compute_signs(d_low, (unsigned long *)pc, signs), n);
-#endif
   relMem(pc);
   *sgns = malloc(sizeof(size_t) * n);
   enqueueReadBuf(q, sizeof(size_t) * n, signs, *sgns);
@@ -448,12 +444,7 @@ size_t *MK_NAME(query) (const save_t *save, const double *points,
   }
   BUFTYPE(size_t) signs = MK_BUF_RW_NA(gpu_context, double,
 				       save->tries * ycnt);
-#ifndef ocl2c
   LOOP1(q, compute_signs(save->d_short, dprds, signs), save->tries * ycnt);
-#else
-  LOOP1(q, compute_signs(save->d_short, (unsigned long *)dprds, signs),
-	save->tries * ycnt);
-#endif
   relMem(dprds);
   BUFTYPE(size_t) ipts = MK_BUF_RW_NA(gpu_context, size_t,
 				      msofar * (save->d_short + 1) * ycnt);

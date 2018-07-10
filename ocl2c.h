@@ -4,7 +4,7 @@
 
 #define __kernel
 #define __global
-#define rsqrt(x) 1/sqrt(x)
+#define rsqrt(x) (1/sqrt(x))
 #define barrier(x)
 
 #define sincos(a, b) (*(b) = cos(a), sin(a))
@@ -22,5 +22,9 @@ typedef unsigned long ulong;
     LOOP2(q, f, mx, my)
 
 #define get_global_id(i) (i == 0? glob_x : i == 1? glob_y : glob_z)
+
+static ulong as_ulong(double d) {
+  return(*(ulong *)&d);
+}
 
 #endif

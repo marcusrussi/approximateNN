@@ -350,12 +350,12 @@ __kernel void rdups(const size_t count,
 // Θ(d) depth, Θ(nd) work,
 // compute_signs(d, points, results)(n);
 __kernel void compute_signs(const size_t d,
-			    __global const ulong *points,
+			    __global const double *points,
 			    __global size_t *results) {
   size_t x = get_global_id(0);
   size_t r = 0;
   for(size_t i = 0; i < d; i++)
-    r = r << 1 | (points[x * d + i] >> 63);
+    r = r << 1 | (as_ulong(points[x * d + i]) >> 63);
   results[x] = r;
 }
 
