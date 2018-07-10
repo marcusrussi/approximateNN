@@ -442,7 +442,7 @@ size_t *MK_NAME(query) (const save_t *save, const double *points,
     pmaxes[i] = msofar;
     msofar += save->par_maxes[i];
   }
-  BUFTYPE(size_t) signs = MK_BUF_RW_NA(gpu_context, double,
+  BUFTYPE(size_t) signs = MK_BUF_RW_NA(gpu_context, size_t,
 				       save->tries * ycnt);
   LOOP1(q, compute_signs(save->d_short, dprds, signs), save->tries * ycnt);
   relMem(dprds);
