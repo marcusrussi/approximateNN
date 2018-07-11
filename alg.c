@@ -298,6 +298,7 @@ size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
 /* Starting point: */
 /* We have an array, points, that is n by d_long. */
 /* We also have save, which is a save structure. */
+// Why is this producing different results for GPU and CPU?
 size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const float *points,
 			  int tries, size_t rots_before, size_t rot_len_before,
 			  size_t rots_after, size_t rot_len_after,
