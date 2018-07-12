@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "gpu_comp.h"
+#include <time.h>
 
 void genRand(size_t n, size_t d, float *points) {
   for(size_t i = 0; i < n * d; i++)
@@ -17,6 +18,7 @@ int main(int argc, char **argv) {
   char save_test = 0, progress = 0, use_cpu = 0;
   opterr = 0;
   int c;
+  srandom(time(NULL));
   while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hzvc")) != -1)
     switch(c) {
     case '?':
