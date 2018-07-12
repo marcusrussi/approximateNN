@@ -13,10 +13,12 @@ void genRand(size_t n, size_t d, double *points) {
 }
 
 double compute_score(size_t n, size_t k, size_t d,
-		     const double *points, const size_t *guess, double *scb);
+		     const double *points, const size_t *guess, double *scb,
+		     double *scc);
 double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
 			   const double *points, const double *y,
-			   const size_t *guess, double *scb);
+			   const size_t *guess, double *scb,
+			   double *scc);
 
 int main(int argc, char **argv) {
   size_t n = 1000, k = 10, d = 80, tries = 10, average_over = 100;
@@ -91,7 +93,7 @@ int main(int argc, char **argv) {
     }
   if(!use_cpu)
     gpu_init();
-  double score = 0, scb = 0;
+  double score = 0, scb = 0, scc = 0;
   double *points = malloc(sizeof(double) * n * d);
   if(use_y) {
     save_t save;
@@ -104,7 +106,8 @@ int main(int argc, char **argv) {
       size_t *stuff;
       genRand(ycnt, d, y);
       stuff = query(&save, points, ycnt, y, use_cpu);
-      score += compute_score_query(n, k, d, ycnt, points, y, stuff, &scb);
+      score += compute_score_query(n, k, d, ycnt, points, y, stuff,
+				   &scb, &scc);
       free(stuff);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
@@ -117,7 +120,7 @@ int main(int argc, char **argv) {
       genRand(n, d, points);
       stuff = precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
 		      NULL, use_cpu);
-      score += compute_score(n, k, d, points, stuff, &scb);
+      score += compute_score(n, k, d, points, stuff, &scb, &scc);
       free(stuff);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
@@ -127,15 +130,19 @@ int main(int argc, char **argv) {
   free(points);
   if(progress)
     putchar('\n');
-  printf("Average score for %s (on %cPU): %g; prob correct: %g\n",
-	 ycnt? "query" :  "comp",
+  printf("Average index score for %s (on %cPU): %g.\nProb correct: %g.\n"
+	 "Max index score: %g\n",
+	 use_y? "query" :  "comp",
 	 use_cpu? 'C' : 'G',
-	 score / average_over - k * (k - 1) / 2, 1 - scb / average_over);
+	 (score / average_over - k * (k - 1) / 2) / k,
+	 1 - scb / average_over,
+	 scc / average_over / k);
 }
 
 // guess is y by k, ansinv is y by n.
 double cscore(size_t y, size_t n, size_t k,
-	      const size_t *guess, const size_t *ansinv, double *foo);
+	      const size_t *guess, const size_t *ansinv, double *foo,
+	      double *bar);
 
 typedef struct {
   size_t point;
@@ -159,7 +166,8 @@ void compdists(size_t ycnt, size_t n, size_t d,
 	       pairedup *p, const double *y, const double *points);
 
 double compute_score(size_t n, size_t k, size_t d,
-		     const double *points, const size_t *guess, double *scb) {
+		     const double *points, const size_t *guess, double *scb,
+		     double *scc) {
   pairedup *ans = malloc(sizeof(pairedup) * n * (n - 1));
   for(size_t i = 0; i < n; i++)
     for(size_t j = 0, k = 0; j < n - 1; j++, k++) {
@@ -172,14 +180,15 @@ double compute_score(size_t n, size_t k, size_t d,
     qsort(ans + i * (n - 1), n - 1, sizeof(pairedup), cpoint);
   size_t *ia = inv_ans(n, 0, ans);
   free(ans);
-  double f = cscore(n, n, k, guess, ia, scb);
+  double f = cscore(n, n, k, guess, ia, scb, scc);
   free(ia);
   return(f);
 }
 
 double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
 			   const double *points, const double *y,
-			   const size_t *guess, double *scb) {
+			   const size_t *guess, double *scb,
+			   double *scc) {
   pairedup *ans = malloc(sizeof(pairedup) * ycnt * n);
   for(size_t i = 0; i < ycnt; i++)
     for(size_t j = 0; j < n; j++)
@@ -189,7 +198,7 @@ double compute_score_query(size_t n, size_t k, size_t d, size_t ycnt,
     qsort(ans + i * n, n, sizeof(pairedup), cpoint);
   size_t *ia = inv_ans(ycnt, n, ans);
   free(ans);
-  double f = cscore(ycnt, n, k, guess, ia, scb);
+  double f = cscore(ycnt, n, k, guess, ia, scb, scc);
   free(ia);
   return(f);
 }
@@ -234,15 +243,20 @@ size_t *inv_ans(size_t y, size_t n, const pairedup *ans) {
 }
 
 double cscore(size_t y, size_t n, size_t k,
-	      const size_t *guess, const size_t *ansinv, double *d) {
-  double f = 0, g = 0;;
+	      const size_t *guess, const size_t *ansinv, double *d,
+	      double *foo) {
+  double f = 0, g = 0;
+  size_t max = 0;
   for(size_t i = 0; i < y; i++)
     for(size_t j = 0; j < k; j++) {
       size_t l = ansinv[i * n + guess[i * k + j]];
       f += l;
       g += l >= k;
+      if(l > max)
+	max = l;
     }
   *d += g / y / k;
+  *foo += max;
   return(f / y);
 }
 
