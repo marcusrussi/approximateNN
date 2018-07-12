@@ -197,7 +197,7 @@ void TWO_GONLY(compdists, cl_context c, cl_command_queue q,
 	       size_t n, size_t k, size_t d, size_t ycnt, size_t s,
 	       BUFTYPE(const double) y, BUFTYPE(const double) points,
 	       BUFTYPE(size_t) pointers, BUFTYPE(double) dists) {
-  BUFTYPE(double) diffs = MK_BUF_RW_NA(c, double, k * d * ycnt);
+  BUFTYPE(double) diffs = MK_BUF_RW_NA(c, double, (k - s) * d * ycnt);
   LOOP3(q, compute_diffs_squared(d, k, n, s, pointers, y, points, diffs),
 	ycnt, k - s, d);
   AddUpCols(q, d, k, s, ycnt, diffs, dists);
@@ -333,7 +333,7 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const double *points,
     save->d_short = d_short;
     save->d_long = d;
     save->row_means = malloc(sizeof(double) * d);
-    enqueueReadBuf(sq, sizeof(double) * d, row_sums, save->row_means);
+    enqueueReadBuf(q, sizeof(double) * d, row_sums, save->row_means);
     save->which_par = malloc(sizeof(size_t *) * tries);
     save->par_maxes = malloc(sizeof(size_t) * tries);
     save->bases = malloc(sizeof(double) * tries * d_short * d);

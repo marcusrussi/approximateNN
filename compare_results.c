@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <string.h>
+#include <time.h>
 #include "gpu_comp.h"
 
 void genRand(size_t n, size_t d, double *points) {
@@ -29,6 +30,7 @@ int main(int argc, char **argv) {
   char progress = 0, use_y = 0;
   opterr = 0;
   int c;
+  srandom(time(NULL));
   while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hvz")) != -1)
     switch(c) {
     case '?':
@@ -102,13 +104,8 @@ int main(int argc, char **argv) {
     double *y = malloc(sizeof(double) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff, *other;
-      char foo[256], bar[256];
       genRand(ycnt, d, y);
-      fread(foo, 1, 256, randomf);
-      memcpy(bar, foo, 256);
-      setstate(foo);
       stuff = query(&save, points, ycnt, y, 0);
-      setstate(bar);
       other = query(&save, points, ycnt, y, 1);
       score += diffcount(ycnt, k, stuff, other);
       free(stuff);
@@ -122,8 +119,12 @@ int main(int argc, char **argv) {
     for(size_t i = 0; i < average_over; i++) {
       save_t stuff, other;
       genRand(n, d, points);
+      unsigned foo;
+      fread(&foo, sizeof(unsigned), 1, randomf);
+      srandom(foo);
       precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
 	      &stuff, 0);
+      srandom(foo);
       precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
 	      &other, 1);
       score += cdiff_save(&stuff, &other);
@@ -137,7 +138,7 @@ int main(int argc, char **argv) {
   if(progress)
     putchar('\n');
   printf("Average diffs for %s: %g\n",
-	 ycnt? "query" :  "comp",
+	 use_y? "query" :  "comp",
 	 score / average_over);
 }
 
@@ -150,8 +151,9 @@ double cdiff_save(save_t *a, save_t *b) {
     c += a->graph[i] != b->graph[i];
   for(size_t i = 0; i < a->tries * a->d_short * a->d_long; i++)
     c += labs(((long *)a->bases)[i] - ((long *)b->bases)[i]) / 1024.;
-  for(int i = 0; i < a->tries; i++) {
+  for(size_t i = 0; i < a->d_long; i++)
     c += labs(((long *)a->row_means)[i] - ((long *)b->row_means)[i]) / 1024.;
+  for(int i = 0; i < a->tries; i++) {
     if(a->par_maxes[i] != b->par_maxes[i])
       return(ULONG_MAX);
     for(size_t j = 0; j < a->par_maxes[i] << a->d_short; j++)

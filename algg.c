@@ -186,14 +186,12 @@ static void enqueueReadBuf(cl_command_queue q,
 
 static void enqueueFinAC(cl_command_queue q, size_t height, size_t k,
 			 size_t skip, cl_mem from, cl_mem to, size_t n) {
-  size_t ori[3] = {0, 0, 0};
-  size_t foo = k - skip;
-  size_t reg[3] = {sizeof(double), foo, n};
-  if(clEnqueueCopyBufferRect(q, from, to, ori, ori, reg,
-			     height * sizeof(double),
-			     height * sizeof(double) * foo,
-			     sizeof(double),
-			     sizeof(double) * foo,
+  size_t src_ori[3] = {0, 0, 0};
+  size_t dst_ori[3] = {0, skip, 0};
+  size_t reg[3] = {sizeof(double), k - skip, n};
+  if(clEnqueueCopyBufferRect(q, from, to, src_ori, dst_ori, reg,
+			     sizeof(double) * height, 0,
+			     0, sizeof(double) * k,
 			     0, NULL, NULL) != CL_SUCCESS)
     fprintf(stderr, "Failed enqueue of copy.\n"), exit(1);
 }
