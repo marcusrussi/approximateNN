@@ -8,7 +8,7 @@
 #include <time.h>
 #include "gpu_comp.h"
 
-void genRand(size_t n, size_t d, double *points) {
+void genRand(size_t n, size_t d, ftype *points) {
   for(size_t i = 0; i < n * d; i++)
     points[i] = rand_norm();
 }
@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
     }
   gpu_init();
   double score = 0;
-  double *points = malloc(sizeof(double) * n * d);
+  ftype *points = malloc(sizeof(ftype) * n * d);
   FILE *randomf = fopen("/dev/urandom", "r");
   if(use_y) {
     save_t save;
@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 0);
     if(progress)
       printf("Precomputation finished.\n");
-    double *y = malloc(sizeof(double) * ycnt * d);
+    double *y = malloc(sizeof(ftype) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff, *other;
       genRand(ycnt, d, y);
@@ -142,6 +142,12 @@ int main(int argc, char **argv) {
 	 score / average_over);
 }
 
+#ifdef USE_FLOAT
+#define ifabs abs
+#else
+#define ifabs labs
+#endif
+
 double cdiff_save(save_t *a, save_t *b) {
   if(a->tries != b->tries || a->d_short != b->d_short ||
      a->k != b->k || a->d_long != b->d_long || a->n != b->n)
@@ -150,9 +156,10 @@ double cdiff_save(save_t *a, save_t *b) {
   for(size_t i = 0; i < a->n * a->k; i++)
     c += a->graph[i] != b->graph[i];
   for(size_t i = 0; i < a->tries * a->d_short * a->d_long; i++)
-    c += labs(((long *)a->bases)[i] - ((long *)b->bases)[i]) / 1024.;
+    c += ifabs(((i_ftype *)a->bases)[i] - ((i_ftype *)b->bases)[i]) / 1024.;
   for(size_t i = 0; i < a->d_long; i++)
-    c += labs(((long *)a->row_means)[i] - ((long *)b->row_means)[i]) / 1024.;
+    c += ifabs(((i_ftype *)a->row_means)[i] -
+	      ((i_ftype *)b->row_means)[i]) / 1024.;
   for(int i = 0; i < a->tries; i++) {
     if(a->par_maxes[i] != b->par_maxes[i])
       return(ULONG_MAX);

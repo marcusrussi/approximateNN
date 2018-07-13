@@ -21,15 +21,15 @@
 // Θ(lg n) depth, Θ(nd lg n) work,
 // add_rows(d, n, a, r)(n/2, d)(0);
 __kernel void add_rows(const size_t height, const size_t len,
-		    __global const double *a,
-		    __global double *r) {
+		    __global const ftype *a,
+		    __global ftype *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-  double g = !x && len % 2? g = a[(len - 1) * height + y] : 0;
+  ftype g = !x && len % 2? g = a[(len - 1) * height + y] : 0;
   r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;
   for(size_t s = len >> 2, os = len >> 1; s > 0; os = s, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
     if(x >= s) return;
-    double h = os & !x? r[s * 2 * height + y] : 0;
+    ftype h = os & !x? r[s * 2 * height + y] : 0;
     r[x * height + y] += r[(x + s) * height + y] + h;
   }
 }
@@ -38,10 +38,10 @@ __kernel void add_rows(const size_t height, const size_t len,
 // Θ(1) depth, Θ(nd) work,
 // add_rows_step_0(d, n, a, r)(n/2, d);
 __kernel void add_rows_step_0(const size_t height, const size_t len,
-			      __global const double *a,
-			      __global double *r) {
+			      __global const ftype *a,
+			      __global ftype *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-  double g = len & !x? a[(len - 1) * height + y] : 0;
+  ftype g = len & !x? a[(len - 1) * height + y] : 0;
   r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;  
 }
 
@@ -49,16 +49,16 @@ __kernel void add_rows_step_0(const size_t height, const size_t len,
 // Θ(1) depth, Θ(nd) work,
 // add_rows_step_n(d, n, r)(n/2, d);
 __kernel void add_rows_step_n(const size_t height, const size_t len,
-			      __global double *r) {
+			      __global ftype *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-  double g = !x && len % 2 ? r[(len - 1) * height + y] : 0;
+  ftype g = !x && len % 2 ? r[(len - 1) * height + y] : 0;
   r[x * height + y] += r[(x + len / 2) * height + y] + g;
 }
 
 // If r is length d,
 // Θ(1) depth, Θ(d) work,
 // divide_by_length(n, r)(d);
-__kernel void divide_by_length(const size_t length, __global double *r) {
+__kernel void divide_by_length(const size_t length, __global ftype *r) {
   size_t x = get_global_id(0);
   r[x] /= length;
 }
@@ -67,8 +67,8 @@ __kernel void divide_by_length(const size_t length, __global double *r) {
 // Θ(1) depth, Θ(nd) work,
 // subtract_off(d, m, r)(n, d);
 __kernel void subtract_off(const size_t height,
-			   __global double *a,
-			   __global const double *r) {
+			   __global ftype *a,
+			   __global const ftype *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
   a[x * height + y] -= r[y];
 }
@@ -80,14 +80,14 @@ __kernel void subtract_off(const size_t height,
 __kernel void apply_rotation(const size_t height,
 			     __global const size_t *i, // first coordinate
 			     __global const size_t *j, // second coordinate
-			     __global const double *ang,
-			     __global double *a) {
+			     __global const ftype *ang,
+			     __global ftype *a) {
   size_t x = get_global_id(0) * height, y = get_global_id(1);
   size_t k = i[y], l = j[y];
-  double c;
-  double s = sincos(ang[y], &c);
-  double q = a[x + k] * c - a[x + l] * s;
-  double r = a[x + k] * s + a[x + l] * c;
+  ftype c;
+  ftype s = sincos(ang[y], &c);
+  ftype q = a[x + k] * c - a[x + l] * s;
+  ftype r = a[x + k] * s + a[x + l] * c;
   a[x + k] = q;
   a[x + l] = r;
 }
@@ -102,10 +102,10 @@ __kernel void apply_rotation(const size_t height,
 __kernel void apply_permutation(const size_t height_pre,
 				const size_t height_post,
 				__global const size_t *perm,
-				__global const double *a,
-				__global double *r) {
+				__global const ftype *a,
+				__global ftype *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
-  double g = perm[y] < height_pre? a[x * height_pre + perm[y]] : 0;
+  ftype g = perm[y] < height_pre? a[x * height_pre + perm[y]] : 0;
   r[x * height_post + y] = g;
 }
   
@@ -113,8 +113,8 @@ __kernel void apply_permutation(const size_t height_pre,
 __kernel void apply_perm_inv(const size_t height_pre,
 			     const size_t height_post,
 			     __global const size_t *perm,
-			     __global const double *a,
-			     __global double *r) {
+			     __global const ftype *a,
+			     __global ftype *r) {
   size_t x = get_global_id(0), y = get_global_id(1);
   if(perm[y] < height_post)
     r[x * height_post + perm[y]] = a[x * height_pre + y];
@@ -133,23 +133,23 @@ __kernel void apply_perm_inv(const size_t height_pre,
 // Θ(l) depth, Θ(nl 2^l) work,
 // apply_walsh(l, a)(n, 1 << max(l - 4, 0));
 __kernel void apply_walsh(const size_t lheight,
-			  __global double *a) {
-  double rsr = rsqrt(2.0);
+			  __global ftype *a) {
+  ftype rsr = rsqrt(2.0);
   size_t x = get_global_id(0), y = get_global_id(1);
   switch(lheight) {
   case 0:
     return;
   case 1:
     {
-      double a1 = a[x << 1] + a[x << 1 | 1];
-      double a2 = a[x << 1] - a[x << 1 | 1];
+      ftype a1 = a[x << 1] + a[x << 1 | 1];
+      ftype a2 = a[x << 1] - a[x << 1 | 1];
       a[x << 1] = a1 * rsr;
       a[x << 1 | 1] = a2 * rsr;
       return;
     }
   case 2:
     {
-      double b[4];
+      ftype b[4];
       for(int i = 0; i < 4; i++) {
 	b[i] = 0;
 	for(int j = 0; j < 4; j++) {
@@ -169,7 +169,7 @@ __kernel void apply_walsh(const size_t lheight,
       size_t yh = (y1 >> step) << step;
       size_t yl = y1 ^ yh;
       size_t ya = yh << 1 | yl;
-      double alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
+      ftype alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
       a[x << lheight | ya] = (alpha + beta) / (step % 2 + 1);
       a[x << lheight | ya | s] = (alpha - beta) / (step % 2 + 1);
     }
@@ -185,8 +185,8 @@ __kernel void apply_walsh(const size_t lheight,
 // apply_walsh_step(l, s, a)(n, 1 << (l - 4));
 __kernel void apply_walsh_step(const size_t lheight,
 			       const size_t step,
-			       __global double *a) {
-  double rsr = rsqrt(2.0);
+			       __global ftype *a) {
+  ftype rsr = rsqrt(2.0);
   size_t x = get_global_id(0) << lheight, y = get_global_id(1);
   if(!lheight)
     return;
@@ -196,7 +196,7 @@ __kernel void apply_walsh_step(const size_t lheight,
       size_t yl = y1 ^ yh;
       size_t ca = x | yh << 1 | yl;
       size_t cb = ca | 1 << step;
-      double alpha = a[ca], beta = a[cb];
+      ftype alpha = a[ca], beta = a[cb];
       a[ca] = (alpha + beta) / (step % 2 + 1);
       a[cb] = (alpha - beta) / (step % 2 + 1);
   }
@@ -221,14 +221,14 @@ __kernel void compute_diffs_squared(const size_t dims,
 				    const size_t npts,
 				    const size_t skip,
 				    __global const size_t *which,
-				    __global const double *pointsa,
-				    __global const double *points,
-				    __global double *diff_results) {
+				    __global const ftype *pointsa,
+				    __global const ftype *points,
+				    __global ftype *diff_results) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
   int c = npts > which[x * count + y + skip];
   c &= (pointsa != points) | (which[x * count + y + skip] != x);
   // so as to put self at end.
-  double d = pointsa[x * dims + z] -
+  ftype d = pointsa[x * dims + z] -
     points[which[x * count + y + skip] * dims * c + z];
   diff_results[(x * (count - skip) + y) * dims + z] = d * d + (1.0 / c - 1);
   // if out of range, infinite.
@@ -251,18 +251,18 @@ __kernel void compute_diffs_squared(const size_t dims,
 __kernel void add_cols(const size_t height,
 		       const size_t k,
 		       const size_t skip,
-		       __global double *mat,
-		       __global double *out) {
+		       __global ftype *mat,
+		       __global ftype *out) {
   size_t j = k - skip;
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  double g = height & !z? mat[(x * j + y + 1) * height - 1] : 0;
+  ftype g = height & !z? mat[(x * j + y + 1) * height - 1] : 0;
   mat[(x * j + y) * height + z] +=
     mat[(x * j + y) * height + z + height / 2] + g;
   for(size_t s = height >> 2, os = (height>>1); s > 0; os = s, s >>= 1) {
     barrier(CLK_GLOBAL_MEM_FENCE);
     if(z >= s) return;
     g = mat[(x * j + y) * height + z + s];
-    double h = os & !z? mat[(x * j + y) * height + s * 2] : 0;
+    ftype h = os & !z? mat[(x * j + y) * height + s * 2] : 0;
     mat[(x * j + y) * height + z] += g + h;
   }
   if(z == 0)
@@ -275,9 +275,9 @@ __kernel void add_cols(const size_t height,
 __kernel void add_cols_step(const size_t height,
 			    const size_t s,
 			    const size_t k,
-			    __global double *mat) {
+			    __global ftype *mat) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  double g = s & !z? mat[(x * k + y) * height + s - 1] : 0;
+  ftype g = s & !z? mat[(x * k + y) * height + s - 1] : 0;
   mat[(x * k + y) * height + z] += mat[(x * k + y) * height + z + s/2] + g;
 }
 
@@ -297,7 +297,7 @@ __kernel void sort_two_step(const size_t count,
 			    const int step,
 			    const int sstep,
 			    __global size_t *along,
-			    __global double *order) {
+			    __global ftype *order) {
   size_t x = get_global_id(0) * count, y = get_global_id(1);
   for(int i = 0; i < 8; i++) {
     size_t y1 = y << 3 | i;
@@ -310,7 +310,7 @@ __kernel void sort_two_step(const size_t count,
     if(count > y_b) {
       size_t alpha = x + y_a;
       size_t beta = x + y_b;
-      double ao = order[alpha], bo = order[beta];
+      ftype ao = order[alpha], bo = order[beta];
       size_t aa = along[alpha], ba = along[beta];
       ulong doswap = -(ao > bo); // minimize divergence.
       alpha ^= beta, beta ^= alpha & doswap, alpha ^= beta;
@@ -326,7 +326,7 @@ __kernel void sort_two_step(const size_t count,
 // sort_two(k, n, along, order)(n, 1 << max(ceil(lg(k) - 4), 0))(1);
 __kernel void sort_two(const size_t count,
 		       __global size_t *along,
-		       __global double *order) {
+		       __global ftype *order) {
   for(int step = 0; (count - 1) >> step; step++)
     for(int sstep = step; sstep >= 0; sstep--)  {
       sort_two_step(count, step, sstep, along, order);
@@ -340,22 +340,22 @@ __kernel void sort_two(const size_t count,
 // rdups(k, along, order)(n, k - 1);
 __kernel void rdups(const size_t count,
 		    __global const size_t *along,
-		    __global double *order) {
+		    __global ftype *order) {
   size_t x = get_global_id(0) * count, y = get_global_id(1);
   order[x + y] += 1.0 / (along[x + y] != along[x + y + 1]) - 1;
 }
 
-// Note: long is the same length as double, we're doing bit tricks here!
+// Note: long is the same length as ftype, we're doing bit tricks here!
 // If points is n by d, results is length n,
 // Θ(d) depth, Θ(nd) work,
 // compute_signs(d, points, results)(n);
 __kernel void compute_signs(const size_t d,
-			    __global const double *points,
+			    __global const ftype *points,
 			    __global size_t *results) {
   size_t x = get_global_id(0);
   size_t r = 0;
   for(size_t i = 0; i < d; i++)
-    r = r << 1 | (as_ulong(points[x * d + i]) >> 63);
+    r = r << 1 | (as_i_ftype(points[x * d + i]) >> 63);
   results[x] = r;
 }
 
@@ -396,9 +396,9 @@ __kernel void supercharge(const size_t n,
 // prods(d, n, v, p, o)(m, n, d);
 __kernel void prods(const size_t d,
 		    const size_t n,
-		    __global const double *v,
-		    __global const double *p,
-		    __global double *o) {
+		    __global const ftype *v,
+		    __global const ftype *p,
+		    __global ftype *o) {
   size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
   o[(x * n + y) * d + z] = v[x * d + z] * p[y * d + z];
 }

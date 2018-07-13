@@ -2,7 +2,7 @@
 #define ocl2c
 // This must be included, followed by the OpenCL file.
 
-#define __kernel
+#define __kernel static
 #define __global
 #define rsqrt(x) (1/sqrt(x))
 #define barrier(x)
@@ -23,8 +23,18 @@ typedef unsigned long ulong;
 
 #define get_global_id(i) (i == 0? glob_x : i == 1? glob_y : glob_z)
 
+typedef unsigned uint;
+
 static ulong as_ulong(double d) {
   return(*(ulong *)&d);
 }
+
+static uint as_uint(float f) {
+  return(*(uint *)&f);
+}
+#define CONCATENATE(a, b) a ## b
+#define XCONCAT(a, b) CONCATENATE(a, b)
+#define as_i_ftype XCONCAT(as_u, i_ftype)
+
 
 #endif

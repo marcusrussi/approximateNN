@@ -1,10 +1,12 @@
 #include <math.h>
 #include <stdlib.h>
-#include "ocl2c.h"
-#include "compute.cl"
 #include "rand_pr.h"
 #include "ann.h"
 #include <string.h>
+
+#include "ocl2c.h"
+#include "compute.cl"
+
 
 #define max(a, b) ((a) < (b)?b:(a))
 
@@ -32,13 +34,13 @@ static void cp2D(size_t height_pre, size_t height_post, size_t start_post,
 	   src + x * height_pre * s, k * s);
 }
 
-static void add_up_rows(size_t d, size_t n, double *points, double *sums) {
+static void add_up_rows(size_t d, size_t n, ftype *points, ftype *sums) {
   LOOP2(, add_rows_step_0(d, n, points, sums), n/2, d);
   for(size_t m = n >> 1; m >> 1; m >>= 1)
     LOOP2(, add_rows_step_n(d, m, sums), m/2, d);
 }
 
-static void walsh(size_t d, size_t n, double *a) {
+static void walsh(size_t d, size_t n, ftype *a) {
   if(d == 1)
     return;
   int l = lg(d);
@@ -48,7 +50,7 @@ static void walsh(size_t d, size_t n, double *a) {
 }
 
 static void add_up_cols(size_t d, size_t k, size_t skip, size_t n,
-		 double *mat, double *out) {
+		 ftype *mat, ftype *out) {
   for(size_t l = d; l >> 1; l >>= 1)
     LOOP3(, add_cols_step(d, l, k - skip, mat), n, k - skip, l / 2);
   for(size_t x = 0; x < n; x++)
@@ -56,7 +58,7 @@ static void add_up_cols(size_t d, size_t k, size_t skip, size_t n,
       out[x * k + y + skip] = mat[(x * (k - skip) + y) * d];
 }
 
-static void do_sort(size_t k, size_t n, size_t *along, double *order) {
+static void do_sort(size_t k, size_t n, size_t *along, ftype *order) {
   int lk = lg(k);
   size_t nth = (size_t)1 << max(lk - 4, 0);
   for(int s = 0; s < lk; s++)

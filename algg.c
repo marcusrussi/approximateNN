@@ -7,6 +7,10 @@
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
+
+#define XSTR(s) STR(s)
+#define STR(s) #s
 
 static unsigned lg(size_t d) {
   unsigned r = (d > 0xFFFFFFFF) << 5;
@@ -60,20 +64,54 @@ static cl_kernel make_kernel(cl_program p, const char *xn) {
   return(x);
 }
 
+static char c = 0;
+static void teardown(void) {
+  if(!c)
+    return;
+  c = 0;
+  clReleaseProgram(compute);
+  clReleaseKernel(add_rows);
+  clReleaseKernel(apply_walsh);
+  clReleaseKernel(add_cols);
+  clReleaseKernel(sort_two);
+#ifndef OSX
+  clReleaseKernel(add_rows_step_0);
+  clReleaseKernel(add_rows_step_n);
+  clReleaseKernel(divide_by_length);
+  clReleaseKernel(subtract_off);
+  clReleaseKernel(apply_rotation);
+  clReleaseKernel(apply_permutation);
+  clReleaseKernel(apply_perm_inv);
+  clReleaseKernel(apply_walsh_step);
+  clReleaseKernel(compute_diffs_squared);
+  clReleaseKernel(add_cols_step);
+  clReleaseKernel(add_cols_fin);
+  clReleaseKernel(sort_two_step);
+  clReleaseKernel(rdups);
+  clReleaseKernel(compute_signs);
+  clReleaseKernel(compute_which);
+  clReleaseKernel(supercharge);
+  clReleaseKernel(prods);
+#endif  
+}
 static void setup(void) {
-  static char c = 0;
+  gpu_init();
   if(c)
     return;
+  c = 1;
   FILE *ocl_src = fopen("compute.cl", "r");
   struct stat ocl_stt;
   stat("compute.cl", &ocl_stt);
   size_t len = ocl_stt.st_size;
-  char *src_full = malloc(len);
-  fread(src_full, 1, len, ocl_src);
+  char *src_full[3] = { "#define ftype " XSTR(ftype) "\n",
+			"#define as_i_ftype as_u" XSTR(i_ftype) "\n",
+			malloc(len + 1) };
+  fread(src_full[2], 1, len, ocl_src);
   fclose(ocl_src);
+  src_full[2][len] = 0;
   cl_int error;
-  compute = clCreateProgramWithSource(gpu_context, 1, (const char **)&src_full,
-				      &len, &error);
+  compute = clCreateProgramWithSource(gpu_context, 4, (const char **)src_full,
+				      NULL, &error);
   if(error != CL_SUCCESS) {
     fprintf(stderr, "Error loading OpenCL code.\n");
     exit(1);
@@ -111,6 +149,7 @@ static void setup(void) {
   create_kernel(compute, supercharge);
   create_kernel(compute, prods);
 #endif
+  register_cleanup(teardown);
 }
 
 static void enqueue1D(cl_command_queue q, cl_kernel k, size_t x) {
@@ -188,10 +227,10 @@ static void enqueueFinAC(cl_command_queue q, size_t height, size_t k,
 			 size_t skip, cl_mem from, cl_mem to, size_t n) {
   size_t src_ori[3] = {0, 0, 0};
   size_t dst_ori[3] = {0, skip, 0};
-  size_t reg[3] = {sizeof(double), k - skip, n};
+  size_t reg[3] = {sizeof(ftype), k - skip, n};
   if(clEnqueueCopyBufferRect(q, from, to, src_ori, dst_ori, reg,
-			     sizeof(double) * height, 0,
-			     0, sizeof(double) * k,
+			     sizeof(ftype) * height, 0,
+			     0, sizeof(ftype) * k,
 			     0, NULL, NULL) != CL_SUCCESS)
     fprintf(stderr, "Failed enqueue of copy.\n"), exit(1);
 }

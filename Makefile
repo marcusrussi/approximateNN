@@ -45,5 +45,5 @@ compare_results: compare_results.o $(LIB_OFILES) randNorm.o
 $(FAKE_HFILES): %.h:
 	touch $@
 
-$(OFILES): %.o: %.c %.h
+$(OFILES): %.o: %.c %.h ftype.h
 	cc -c -g $(OSOPT) $(WARNS) $<

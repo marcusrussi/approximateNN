@@ -87,14 +87,14 @@ int main(int argc, char **argv) {
   if(!use_cpu)
     gpu_init();
   double time_used = 0;
-  double *points = malloc(sizeof(double) * n * d);
+  ftype *points = malloc(sizeof(ftype) * n * d);
   if(ycnt) {
     save_t save;
     genRand(n, d, points);
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, use_cpu);
     if(progress)
       printf("Precomputation finished.\n");
-    double *y = malloc(sizeof(double) * ycnt * d);
+    ftype *y = malloc(sizeof(ftype) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff;
       tval start, end;
