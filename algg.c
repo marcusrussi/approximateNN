@@ -110,7 +110,7 @@ static void setup(void) {
   fclose(ocl_src);
   src_full[2][len] = 0;
   cl_int error;
-  compute = clCreateProgramWithSource(gpu_context, 4, (const char **)src_full,
+  compute = clCreateProgramWithSource(gpu_context, 3, (const char **)src_full,
 				      NULL, &error);
   if(error != CL_SUCCESS) {
     fprintf(stderr, "Error loading OpenCL code.\n");
