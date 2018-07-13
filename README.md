@@ -1,16 +1,49 @@
 # approximateNN
 Approximate nearest neighbors implementation, in C/OpenCL.
-compute.cl contains the OpenCL code to handle the easily parallelizable part.
 
-So far, this is code to apply arbitrary rotations and permutations
-(allowing permutations to be submatrices of a permutation matrix),
-Walsh transforms,
-and inversion of permutations (if they aren't shortening ones),__
-to compute the rowwise mean of a matrix and subtract it off every column
-(broken into three parts),  
-to compute the distances from a point to a selection of other points
-(broken into two parts),  
-to sort lists of points by their distances and deduplicate,  
-and to copy the top `k` rows of a matrix
-into the rows starting at `l` of another,
-for both integer and double matrices.
+`alg.c` contains the algorithm, in a way that can easily be transformed
+into pure C or usage of the OpenCL API.
+
+`algc.c` contains the code to turn the algorithm into pure C;
+`algc.h` contains extern declarations for `precomp_cpu` and `query_cpu`.
+
+`algg.c` contains the code to cause the algorithm to use the OpenCL API.
+`algg.h` contains extern declarations for `precomp_gpu` and `query_gpu`.
+
+`algorithm.txt` is a very weird pseudocode version of the algorithm.
+
+`ann.c` contains code to allow a user to use either CPU or GPU versions with
+the same function call;
+`ann.h` contains the declarations for `precomp` and `query`,
+as well as a definition of `save_t` (the save data structure)
+and a declaration of a function to free a `save_t`.
+
+`compare_results.c` is a test to ensure that the OpenCL and pure C versions 
+give the same result.
+
+`compute.cl` contains the OpenCL code; it must be
+in the working directory when running the OpenCL version.
+
+`ftype.h` contains code to enable easy switching between float and double
+(separate compilation necessary).
+
+`gpu_comp.c` contains code to setup and teardown OpenCL.
+`gpu_comp.h` contains declarations.
+
+`ocl2c.h` is used to convert OpenCL C to regular C.
+
+`randNorm.c` is used by the test code to create random numbers with a
+standard normal distribution.
+`randNorm.h` has bindings.
+
+`rand_pr.c` contains code to create random subpermutation matrices and
+rotation matrices in a fixed format.
+`rand_pr.h` has bindings for this.
+
+`test_correctness.c` contains code to check how well the algorithm does
+on random data.
+
+`time_results.c` contains code to time the algorithm on random data.
+
+`timing.h` is a hack to allow identical code to be used on OSX and Linux for
+very simple timing purposes.
