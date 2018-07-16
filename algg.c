@@ -23,7 +23,7 @@ static unsigned lg(size_t d) {
   return(r | s | d >> 1);
 }
 
-#ifdef OSX
+#ifdef SUPPORT_OPENCL_V1_2
 #define clCreateCommandQueueWithProperties(a, b, c, d) \
   clCreateCommandQueue(a, b, 0, d)
 #endif
@@ -117,7 +117,7 @@ static void setup(void) {
     exit(1);
   }
   if(clBuildProgram(compute, 0, NULL,
-#ifdef OSX
+#ifdef SUPPORT_OPENCL_V1_2
 		    "",
 #else
 		    "-cl-std=CL2.0",
@@ -130,7 +130,7 @@ static void setup(void) {
   create_kernel(compute, apply_walsh);
   create_kernel(compute, add_cols);
   create_kernel(compute, sort_two);
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
   create_kernel(compute, add_rows_step_0);
   create_kernel(compute, add_rows_step_n);
   create_kernel(compute, divide_by_length);
@@ -265,13 +265,13 @@ static void add_up_rows(cl_command_queue q, size_t d, size_t n,
     ska(t0, 2, points);
     ska(t0, 3, sums);
     enqueue2D(q, t0, n/2, d);
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
     t0 = clone_kernel(add_rows_step_n);
     ska(t0, 0, d);
     ska(t0, 2, sums);
 #endif
     for(size_t m = n >> 1; m >> 1; m >>= 1) {
-#ifdef OSX
+#ifdef SUPPORT_OPENCL_V1_2
       cl_kernel tk = clone_kernel(add_rows_step_n);
       ska(tk, 0, d);
       ska(tk, 2, sums);
@@ -281,7 +281,7 @@ static void add_up_rows(cl_command_queue q, size_t d, size_t n,
       ska(tk, 1, m);
       enqueue2D(q, tk, m/2, d);
     }
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
     clReleaseKernel(t0);
 #endif
   }
@@ -304,13 +304,13 @@ static void walsh(cl_command_queue q, size_t d, size_t n, cl_mem a) {
     clEnqueueNDRangeKernel(q, tk, 2, NULL, foo, bar, 0, NULL, NULL);
     clReleaseKernel(tk);
   } else {
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
     cl_kernel t0 = clone_kernel(apply_walsh_step);
     ska(t0, 0, l);
     ska(t0, 2, a);
 #endif
     for(size_t i = 0; i < l; i++) {
-#ifdef OSX
+#ifdef SUPPORT_OPENCL_V1_2
       cl_kernel tk = clone_kernel(apply_walsh_step);
       ska(tk, 0, l);
       ska(tk, 2, a);
@@ -320,7 +320,7 @@ static void walsh(cl_command_queue q, size_t d, size_t n, cl_mem a) {
       ska(tk, 1, i);
       enqueue2D(q, tk, n, nth);
     }
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
     clReleaseKernel(t0);
 #endif
   }
@@ -344,14 +344,14 @@ static void add_up_cols(cl_command_queue q, size_t d, size_t k, size_t skip,
     clReleaseKernel(tk);
   } else {
     size_t kms = k - skip;
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
     cl_kernel t0 = clone_kernel(add_cols_step);
     ska(t0, 0, d);
     ska(t0, 2, kms);
     ska(t0, 3, mat);
 #endif
     for(size_t l = d; l >> 1; l >>= 1) {
-#ifdef OSX
+#ifdef SUPPORT_OPENCL_V1_2
       cl_kernel tk = clone_kernel(add_cols_step);
       ska(tk, 0, d);
       ska(tk, 2, kms);
@@ -362,7 +362,7 @@ static void add_up_cols(cl_command_queue q, size_t d, size_t k, size_t skip,
       ska(tk, 1, l);
       enqueue3D(q, tk, n, k - skip, l / 2);
     }
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
     clReleaseKernel(t0);
 #endif
     enqueueFinAC(q, d, k, skip, mat, out, n);
@@ -386,7 +386,7 @@ static void do_sort(cl_command_queue q, size_t k, size_t n,
     clEnqueueNDRangeKernel(q, tk, 2, NULL, foo, bar, 0, NULL, NULL);
     clReleaseKernel(tk);
   } else {
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
     cl_kernel t0 = clone_kernel(sort_two_step);
     ska(t0, 0, k);
     ska(t0, 3, along);

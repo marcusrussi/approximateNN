@@ -6,6 +6,8 @@ OFILES := $(LIB_OFILES) randNorm.o $(TEST_OFILES)
 FAKE_HFILES := time_results.h test_correctness.h compare_results.h
 WARNS := -Wall -Wextra -Wpedantic
 OS := $(shell uname -s)
+# Toss the end of this next line if using OpenCL 2.x.
+OCL_OPT := -DSUPPORT_OPENCL_V1_2
 
 ifeq ("$(OS)", "Darwin")
 	OSOPT := -DOSX
@@ -46,4 +48,4 @@ $(FAKE_HFILES): %.h:
 	touch $@
 
 $(OFILES): %.o: %.c %.h ftype.h
-	cc -c -g $(OSOPT) $(WARNS) $<
+	cc -c -g $(OSOPT) $(OCL_OPT) $(WARNS) $<
