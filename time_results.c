@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <time.h>
-#include "gpu_comp.h"
 
 void genRand(size_t n, size_t d, double *points) {
   for(size_t i = 0; i < n * d; i++)
@@ -15,11 +14,11 @@ void genRand(size_t n, size_t d, double *points) {
 int main(int argc, char **argv) {
   size_t n = 1000, k = 10, d = 80, tries = 10, average_over = 100;
   size_t ycnt = 0, rb = 6, rlenb = 1, ra = 1, rlena = 1;
-  char save_test = 0, progress = 0, use_cpu = 0;
+  char save_test = 0, progress = 0;
   opterr = 0;
   int c;
   srandom(time(NULL));
-  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hzvc")) != -1)
+  while((c = getopt(argc, argv, "n:k:d:t:o:y:b:s:a:r:hzv")) != -1)
     switch(c) {
     case '?':
       fprintf(stderr, "Unknown option %c or missing argument.\n", optopt);
@@ -27,7 +26,6 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Legal options are:\n"
 	      "\t-a n\t\tSet the post-Walsh rotation count to n (default 1)\n"
 	      "\t-b n\t\tSet the pre-Walsh rotation count to n (default 6)\n"
-	      "\t-c\t\tUse the CPU instead of the GPU\n"
 	      "\t-d n\t\tSet the dimensionality to n (default 80)\n"
 	      "\t-h\t\tPrint this help text\n"
 	      "\t-k n\t\tRequest n nearest neighbors (default 10)\n"
@@ -77,21 +75,16 @@ int main(int argc, char **argv) {
     case 'v':
       progress = 1;
       break;
-    case 'c':
-      use_cpu = 1;
-      break;
     default:
       fprintf(stderr, "Can\'t happen!\n");
       exit(1);
     }
-  if(!use_cpu)
-    gpu_init();
   double time_used = 0;
   ftype *points = malloc(sizeof(ftype) * n * d);
   if(ycnt) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, use_cpu);
+    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 1);
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
@@ -100,7 +93,7 @@ int main(int argc, char **argv) {
       tval start, end;
       genRand(ycnt, d, y);
       gettm(start);
-      stuff = query(&save, points, ycnt, y, use_cpu);
+      stuff = query(&save, points, ycnt, y, 1);
       gettm(end);
       free(stuff);
       time_used += td(start, end);
@@ -117,7 +110,7 @@ int main(int argc, char **argv) {
       genRand(n, d, points);
       gettm(start);
       stuff = precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-		      save_test? &save : NULL, use_cpu);
+		      save_test? &save : NULL, 1);
       gettm(end);
       if(save_test)
 	free_save(&save);
@@ -128,12 +121,9 @@ int main(int argc, char **argv) {
 	printf("%zu ", i + 1), fflush(stdout);
     }
   free(points);
-  if(!use_cpu)
-    gpu_cleanup();
   if(progress)
     putchar('\n');
-  printf("Average time for %s (on %cPU): %gs\n",
+  printf("Average time for %s (on CPU): %gs\n",
 	 ycnt? "query" : save_test? "comp (with save)" : "comp (no save)",
-	 use_cpu? 'C' : 'G',
 	 time_used / average_over / 1000000000);
 }
