@@ -34,48 +34,20 @@ static void cp2D(size_t height_pre, size_t height_post, size_t start_post,
 	   src + x * height_pre * s, k * s);
 }
 
-static void add_up_rows(size_t d, size_t n, ftype *points, ftype *sums) {
-  LOOP2(, add_rows_step_0(d, n, points, sums), n/2, d);
-  for(size_t m = n >> 1; m >> 1; m >>= 1)
-    LOOP2(, add_rows_step_n(d, m, sums), m/2, d);
-}
-
-static void walsh(size_t d, size_t n, ftype *a) {
-  if(d == 1)
-    return;
-  int l = lg(d);
-  size_t nth = max(d / 16, 1);
-  for(int i = 0; i < l; i++)
-    LOOP2(, apply_walsh_step(l, i, a), n, nth);
-}
-
-static void add_up_cols(size_t d, size_t k, size_t skip, size_t n,
-		 ftype *mat, ftype *out) {
-  for(size_t l = d; l >> 1; l >>= 1)
-    LOOP3(, add_cols_step(d, l, k - skip, mat), n, k - skip, l / 2);
-  for(size_t x = 0; x < n; x++)
-    for(size_t y = 0; y < k - skip; y++)
-      out[x * k + y + skip] = mat[(x * (k - skip) + y) * d];
-}
-
-static void do_sort(size_t k, size_t n, size_t *along, ftype *order) {
-  int lk = lg(k);
-  size_t nth = (size_t)1 << max(lk - 4, 0);
-  for(int s = 0; s < lk; s++)
-    for(int ss = s; ss >= 0; ss--)
-      LOOP2(, sort_two_step(k, s, ss, along, order), n, nth);
-}
-
 static void *mbc(size_t k, const void *src) {
   void *dst = malloc(k);
   memcpy(dst, src, k);
   return(dst);
 }
 
-#define AddUpRows(q, ...) add_up_rows(__VA_ARGS__)
-#define AddUpCols(q, ...) add_up_cols(__VA_ARGS__)
-#define Walsh(q, ...) walsh(__VA_ARGS__)
-#define DoSort(q, ...) do_sort(__VA_ARGS__)
+static void finish_cols(size_t h, size_t k, size_t skip, ftype *mat,
+			ftype *out, size_t n) {
+  for(size_t x = 0; x < n; x++)
+    for(size_t y = 0; y < k - skip; y++)
+      out[x * k + y + skip] = mat[(x * (k - skip) + y) * h];
+}
+
+#define fin_add_cols(q, ...) finish_cols(__VA_ARGS__)
 #define enqueueCopyBuf(q, sz, src, dst) memcpy(dst, src, sz)
 #define enqueueReadBuf(q, sz, src, dst) memcpy(dst, src, sz)
 #define enqueueCopy2D(q, t, ...) cp2D(__VA_ARGS__, sizeof(t))

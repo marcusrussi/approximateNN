@@ -107,6 +107,41 @@ void MK_NAME(cleanup)(OEVENT e, OINT i, void *stuff) {
   free(trash->o);
 }
 
+void FST_GONLY(walsh, cl_command_queue q,
+	       size_t d, size_t n, BUFTYPE(ftype) a) {
+  if(d == 1)
+    return;
+  int l = lg(d);
+  size_t nth = max(d / 16, 1);
+  for(int i = 0; i < l; i++)
+    LOOP2(q, apply_walsh_step(l, i, a), n, nth);
+}
+
+void FST_GONLY(add_up_rows, cl_command_queue q,
+	       size_t d, size_t n,
+	       BUFTYPE(ftype) points, BUFTYPE(ftype) sums) {
+  LOOP2(q, add_rows_step_0(d, n, points, sums), n/2, d);
+  for(size_t m = n >> 1; m >> 1; m >>= 1)
+    LOOP2(q, add_rows_step_n(d, m, sums), m/2, d);
+}
+
+void FST_GONLY(add_up_cols, cl_command_queue q,size_t d, size_t k,
+	       size_t skip, size_t n, BUFTYPE(ftype) mat, BUFTYPE(ftype) out) {
+  for(size_t l = d; l >> 1; l >>= 1)
+    LOOP3(q, add_cols_step(d, l, k - skip, mat), n, k - skip, l / 2);
+  fin_add_cols(q, d, k, skip, mat, out, n);
+}
+
+void FST_GONLY(do_sort, cl_command_queue q, size_t k, size_t n,
+	     BUFTYPE(size_t) along, BUFTYPE(ftype) order) {
+  int lk = lg(k);
+  size_t nth = (size_t)1 << max(lk - 4, 0);
+  for(int s = 0; s < lk; s++)
+    for(int ss = s; ss >= 0; ss--)
+      LOOP2(q, sort_two_step(k, s, ss, along, order), n, nth);
+}
+
+
 // Performs a random orthogonal operation + projection (supplied),
 // and returns the signs of every provided vector after that op,
 // shoved into a list of size_ts.
@@ -129,7 +164,7 @@ BUFTYPE(size_t) TWO_GONLY(run_initial, cl_context c, cl_command_queue q,
   BUFTYPE(ftype) pc2 = MK_BUF_RW_NA(c, ftype, n * d_max);
   LOOP2(q, apply_permutation(d_high, d_max, o->perm_b, pc, pc2), n, d_max);
   relMem(pc);
-  Walsh(q, d_max, n, pc2);
+  FST_GONLY(walsh, q, d_max, n, pc2);
   for(size_t i = 0; i < rots_a; i++)
     LOOP2(q, apply_rotation(d_max, o->ra.is[i], o->ra.js[i], o->ra.as[i], pc2),
 	  n, rot_len_a);
@@ -167,7 +202,7 @@ void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
   for(long i = rots_a - 1; i >= 0; i--)
     LOOP2(q, apply_rotation(d_max, o->ra.js[i], o->ra.is[i], o->ra.as[i],
 			    vecs2), d_low, rot_len_a);
-  Walsh(q, d_max, d_low, vecs2);
+  FST_GONLY(walsh, q, d_max, d_low, vecs2);
   vecs = MK_BUF_RW_RO(c, ftype, d_low * d_high);
   LOOP2(q, apply_perm_inv(d_max, d_high, o->perm_b, vecs2, vecs),
 	d_low, d_max);
@@ -187,9 +222,9 @@ void TWO_GONLY(save_vecs, cl_context c, cl_command_queue q,
 void FST_GONLY(sort_and_uniq, cl_command_queue q, size_t n,
 		 size_t k, BUFTYPE(size_t) along,
 		 BUFTYPE(ftype) order) {
-  DoSort(q, k, n, along, order);
+  FST_GONLY(do_sort, q, k, n, along, order);
   LOOP2(q, rdups(k, along, order), n, k - 1);
-  DoSort(q, k, n, along, order);
+  FST_GONLY(do_sort, q, k, n, along, order);
 }
 
 // Ugh, I dunno how to describe this. It computes certain distances.
@@ -200,7 +235,7 @@ void TWO_GONLY(compdists, cl_context c, cl_command_queue q,
   BUFTYPE(ftype) diffs = MK_BUF_RW_NA(c, ftype, (k - s) * d * ycnt);
   LOOP3(q, compute_diffs_squared(d, k, n, s, pointers, y, points, diffs),
 	ycnt, k - s, d);
-  AddUpCols(q, d, k, s, ycnt, diffs, dists);
+  FST_GONLY(add_up_cols, q, d, k, s, ycnt, diffs, dists);
   relMem(diffs);
 }
 // This (a) figures out what the candidates for near neighbors are,
@@ -323,7 +358,7 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const ftype *points,
     row_sums = MK_BUF_RW_RO(gpu_context, ftype, (n/2) * d);  
   else
     row_sums = MK_BUF_RW_NA(gpu_context, ftype, (n/2) * d);
-  AddUpRows(q, d, n, pnts, row_sums);  
+  FST_GONLY(add_up_rows, q, d, n, pnts, row_sums);  
   LOOP1(q, divide_by_length(n, row_sums), d);
   LOOP2(q, subtract_off(d, pnts, row_sums), n, d);
   if(save != NULL) {
@@ -434,7 +469,7 @@ size_t *MK_NAME(query) (const save_t *save, const ftype *points,
   relMem(y2);
   BUFTYPE(ftype) dprds = MK_BUF_RW_NA(gpu_context, ftype,
 				       save->tries * ycnt * save->d_short);
-  AddUpCols(q, save->d_long, save->d_short, 0, save->tries * ycnt,
+  FST_GONLY(add_up_cols, q, save->d_long, save->d_short, 0, save->tries * ycnt,
 	      cprds, dprds);
   relMem(cprds);
   size_t *pmaxes = malloc(sizeof(size_t) * save->tries);

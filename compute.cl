@@ -5,34 +5,9 @@
 // I mean the same, but coordinate c must be kept together.
 
 // Add rows:
-// if(n/2 <= max_conc_threads)
-//   add_rows(d, n, a, r)(n/2, d)(0);
-// else {
 //   add_rows_step_0(d, n, a, r)(n/2, d);
 //   for(m = n >> 1; m; m >>= 1)
 //     add_rows_step_n(d, m, r)(m/2, d);
-// }
-// in second branch, work is only Θ(nd).
-
-// a is supposed to have a length of l,
-// r of l/2.
-// End result is that row sums of a are stored in r.
-// If a is n by d, r is (n/2 by d),
-// Θ(lg n) depth, Θ(nd lg n) work,
-// add_rows(d, n, a, r)(n/2, d)(0);
-__kernel void add_rows(const size_t height, const size_t len,
-		    __global const ftype *a,
-		    __global ftype *r) {
-  size_t x = get_global_id(0), y = get_global_id(1);
-  ftype g = !x && len % 2? g = a[(len - 1) * height + y] : 0;
-  r[x * height + y] = a[x * height + y] + a[(x + len / 2) * height + y] + g;
-  for(size_t s = len >> 2, os = len >> 1; s > 0; os = s, s >>= 1) {
-    barrier(CLK_GLOBAL_MEM_FENCE);
-    if(x >= s) return;
-    ftype h = os & !x? r[s * 2 * height + y] : 0;
-    r[x * height + y] += r[(x + s) * height + y] + h;
-  }
-}
 
 // If a is n by d, r is n/2 by d,
 // Θ(1) depth, Θ(nd) work,
@@ -120,66 +95,6 @@ __kernel void apply_perm_inv(const size_t height_pre,
     r[x * height_post + perm[y]] = a[x * height_pre + y];
 }
 
-// Walsh transform:
-// if(1 << (l - 4) <= max_conc_threads)
-//   apply_walsh(l, a)(n, 1 << max(l - 4, 0))(1);
-// else
-//   for(k = 0; k < l; k++)
-//     apply_walsh_step(l, k, a)(n, 1 << (l - 4));
-
-// a is source and target.
-// Self-inverse.
-// If a is size n by 1 << l,
-// Θ(l) depth, Θ(nl 2^l) work,
-// apply_walsh(l, a)(n, 1 << max(l - 4, 0));
-__kernel void apply_walsh(const size_t lheight,
-			  __global ftype *a) {
-  ftype rsr = rsqrt(2.0);
-  size_t x = get_global_id(0), y = get_global_id(1);
-  switch(lheight) {
-  case 0:
-    return;
-  case 1:
-    {
-      ftype a1 = a[x << 1] + a[x << 1 | 1];
-      ftype a2 = a[x << 1] - a[x << 1 | 1];
-      a[x << 1] = a1 * rsr;
-      a[x << 1 | 1] = a2 * rsr;
-      return;
-    }
-  case 2:
-    {
-      ftype b[4];
-      for(int i = 0; i < 4; i++) {
-	b[i] = 0;
-	for(int j = 0; j < 4; j++) {
-	  int k = i & j;
-	  b[i] += a[x << 2 | j] * (1 - ((k ^ (k >> 1)) & 1) * 2);
-	}
-      }
-      for(int i = 0; i < 4; i++)
-	a[x << 2 | i] = b[i] / 2;
-      return;
-    }
-  default:;
-  }
-  for(size_t step = 0, s = 1; step < lheight; step++, s <<= 1) {
-    for(int j = 0; j < 8; j++) {
-      size_t y1 = y << 3 | j;
-      size_t yh = (y1 >> step) << step;
-      size_t yl = y1 ^ yh;
-      size_t ya = yh << 1 | yl;
-      ftype alpha = a[x << lheight | ya], beta = a[x << lheight | ya | s];
-      a[x << lheight | ya] = (alpha + beta) / (step % 2 + 1);
-      a[x << lheight | ya | s] = (alpha - beta) / (step % 2 + 1);
-    }
-      barrier(CLK_GLOBAL_MEM_FENCE);
-  }
-  if(lheight & 1)
-    for(int j = 0; j < 16; j++)
-      a[x << lheight | y << 4 | j] *= rsr;
-}
-
 // If a is n by 1 << l,
 // Θ(1) depth, Θ(n * 2^l) work,
 // apply_walsh_step(l, s, a)(n, 1 << (l - 4));
@@ -235,39 +150,8 @@ __kernel void compute_diffs_squared(const size_t dims,
 }
 
 // Add columns:
-// if(d/2 <= max_conc_threads)
-//   add_cols(d, k, s, mat, out)(n, k - s, d / 2)(2);
-// else {
 //   for(h = d; h >> 1; h >>= 1)
 //     add_cols_step(d, h, k, mat)(n, k - s, h / 2);
-//   add_cols_fin(d, k, s, mat, out)(n, k - s);
-// }
-// If the second branch is taken,
-// work is only Θ(nkd).
-
-// If mat is n by (k - s) by d, out is n by k,
-// Θ(lg d) depth, Θ(n(k-s)d lg d) work,
-// add_cols(d, k, s, mat, out)(n, k - s, d / 2)(2);
-__kernel void add_cols(const size_t height,
-		       const size_t k,
-		       const size_t skip,
-		       __global ftype *mat,
-		       __global ftype *out) {
-  size_t j = k - skip;
-  size_t x = get_global_id(0), y = get_global_id(1), z = get_global_id(2);
-  ftype g = height & !z? mat[(x * j + y + 1) * height - 1] : 0;
-  mat[(x * j + y) * height + z] +=
-    mat[(x * j + y) * height + z + height / 2] + g;
-  for(size_t s = height >> 2, os = (height>>1); s > 0; os = s, s >>= 1) {
-    barrier(CLK_GLOBAL_MEM_FENCE);
-    if(z >= s) return;
-    g = mat[(x * j + y) * height + z + s];
-    ftype h = os & !z? mat[(x * j + y) * height + s * 2] : 0;
-    mat[(x * j + y) * height + z] += g + h;
-  }
-  if(z == 0)
-    out[x * k + y + skip] = mat[(x * j + y) * height];
-}
 
 // If mat is n by k by d,
 // Θ(1) depth, Θ(nkd) work,
@@ -318,20 +202,6 @@ __kernel void sort_two_step(const size_t count,
       order[alpha] = ao, order[beta] = bo;
     }
   }
-}
-
-
-// If order and along are n by k,
-// Θ((lg k)^2) depth, Θ(nk (lg k)^2) work,
-// sort_two(k, n, along, order)(n, 1 << max(ceil(lg(k) - 4), 0))(1);
-__kernel void sort_two(const size_t count,
-		       __global size_t *along,
-		       __global ftype *order) {
-  for(int step = 0; (count - 1) >> step; step++)
-    for(int sstep = step; sstep >= 0; sstep--)  {
-      sort_two_step(count, step, sstep, along, order);
-      barrier(CLK_GLOBAL_MEM_FENCE);
-    }
 }
 
 // Removes duplicates by setting distances to +infinity.

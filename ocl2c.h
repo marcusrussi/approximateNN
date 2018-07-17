@@ -25,13 +25,16 @@ typedef unsigned long ulong;
 
 typedef unsigned uint;
 
+#ifndef USE_FLOAT
 static ulong as_ulong(double d) {
   return(*(ulong *)&d);
 }
-
+#else
 static uint as_uint(float f) {
   return(*(uint *)&f);
 }
+#endif
+
 #define CONCATENATE(a, b) a ## b
 #define XCONCAT(a, b) CONCATENATE(a, b)
 #define as_i_ftype XCONCAT(as_u, i_ftype)

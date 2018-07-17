@@ -34,8 +34,7 @@ static unsigned lg(size_t d) {
 #define max(a, b) ((a) < (b)?b:(a))
 
 cl_program compute;
-static cl_kernel add_rows, apply_walsh, add_cols, sort_two;
-#ifdef OSX
+#ifdef SUPPORT_OPENCL_V1_2
 #define clone_kernel(src) make_kernel(compute, #src);
 #else
 static cl_kernel add_rows_step_0, add_rows_step_n, divide_by_length,
@@ -69,12 +68,7 @@ static void teardown(void) {
   if(!c)
     return;
   c = 0;
-  clReleaseProgram(compute);
-  clReleaseKernel(add_rows);
-  clReleaseKernel(apply_walsh);
-  clReleaseKernel(add_cols);
-  clReleaseKernel(sort_two);
-#ifndef OSX
+#ifndef SUPPORT_OPENCL_V1_2
   clReleaseKernel(add_rows_step_0);
   clReleaseKernel(add_rows_step_n);
   clReleaseKernel(divide_by_length);
@@ -92,7 +86,8 @@ static void teardown(void) {
   clReleaseKernel(compute_which);
   clReleaseKernel(supercharge);
   clReleaseKernel(prods);
-#endif  
+#endif
+  clReleaseProgram(compute);
 }
 static void setup(void) {
   gpu_init();
@@ -126,10 +121,6 @@ static void setup(void) {
     fprintf(stderr, "Error building program.\n");
     exit(1);
   }
-  create_kernel(compute, add_rows);
-  create_kernel(compute, apply_walsh);
-  create_kernel(compute, add_cols);
-  create_kernel(compute, sort_two);
 #ifndef SUPPORT_OPENCL_V1_2
   create_kernel(compute, add_rows_step_0);
   create_kernel(compute, add_rows_step_n);
@@ -242,181 +233,23 @@ static void setKerArg(cl_kernel k, cl_uint ai, size_t as, const void *av) {
     fprintf(stderr, "Error setting kernel args.\n"), exit(1);
 }
 
-static void add_up_rows(cl_command_queue q, size_t d, size_t n,
-			cl_mem points, cl_mem sums) {
-  size_t max_wgs;
-  if(clGetKernelWorkGroupInfo(add_rows, NULL, CL_KERNEL_WORK_GROUP_SIZE,
-			      sizeof(size_t), &max_wgs, NULL) != CL_SUCCESS)
-    fprintf(stderr, "Error reading info.\n"), exit(1);
-  if(n / 2 <= max_wgs) {
-    size_t foo[2] = {n/2, d};
-    size_t bar[2] = {n/2, 1};
-    cl_kernel tk = clone_kernel(add_rows);
-    ska(tk, 0, d);
-    ska(tk, 1, n);
-    ska(tk, 2, points);
-    ska(tk, 3, sums);
-    clEnqueueNDRangeKernel(q, tk, 2, NULL, foo, bar, 0, NULL, NULL);
-    clReleaseKernel(tk);
-  } else {
-    cl_kernel t0 = clone_kernel(add_rows_step_0);
-    ska(t0, 0, d);
-    ska(t0, 1, n);
-    ska(t0, 2, points);
-    ska(t0, 3, sums);
-    enqueue2D(q, t0, n/2, d);
-#ifndef SUPPORT_OPENCL_V1_2
-    t0 = clone_kernel(add_rows_step_n);
-    ska(t0, 0, d);
-    ska(t0, 2, sums);
-#endif
-    for(size_t m = n >> 1; m >> 1; m >>= 1) {
-#ifdef SUPPORT_OPENCL_V1_2
-      cl_kernel tk = clone_kernel(add_rows_step_n);
-      ska(tk, 0, d);
-      ska(tk, 2, sums);
-#else
-      cl_kernel tk = clone_kernel(t0);
-#endif
-      ska(tk, 1, m);
-      enqueue2D(q, tk, m/2, d);
-    }
-#ifndef SUPPORT_OPENCL_V1_2
-    clReleaseKernel(t0);
-#endif
-  }
-}
 
-static void walsh(cl_command_queue q, size_t d, size_t n, cl_mem a) {
-  if(d == 1)
-    return;
-  size_t max_wgs;
-  if(clGetKernelWorkGroupInfo(apply_walsh, NULL, CL_KERNEL_WORK_GROUP_SIZE,
-			      sizeof(size_t), &max_wgs, NULL) != CL_SUCCESS)
-    fprintf(stderr, "Error reading info.\n"), exit(1);
-  size_t l = lg(d);
-  size_t nth = max(d / 16, 1);
-  if(nth <= max_wgs) {
-    size_t foo[2] = {n, nth}, bar[2] = {1, nth};
-    cl_kernel tk = clone_kernel(apply_walsh);
-    ska(tk, 0, l);
-    ska(tk, 1, a);
-    clEnqueueNDRangeKernel(q, tk, 2, NULL, foo, bar, 0, NULL, NULL);
-    clReleaseKernel(tk);
-  } else {
-#ifndef SUPPORT_OPENCL_V1_2
-    cl_kernel t0 = clone_kernel(apply_walsh_step);
-    ska(t0, 0, l);
-    ska(t0, 2, a);
-#endif
-    for(size_t i = 0; i < l; i++) {
-#ifdef SUPPORT_OPENCL_V1_2
-      cl_kernel tk = clone_kernel(apply_walsh_step);
-      ska(tk, 0, l);
-      ska(tk, 2, a);
-#else
-      cl_kernel tk = clone_kernel(&tk, t0);
-#endif
-      ska(tk, 1, i);
-      enqueue2D(q, tk, n, nth);
-    }
-#ifndef SUPPORT_OPENCL_V1_2
-    clReleaseKernel(t0);
-#endif
-  }
+static cl_kernel cr_add_rows_step_0(size_t h, size_t l,
+				    cl_mem a, cl_mem r) {
+  cl_kernel k = clone_kernel(add_rows_step_0);
+  ska(k, 0, h);
+  ska(k, 1, l);
+  ska(k, 2, a);
+  ska(k, 3, r);
+  return(k);
 }
-
-static void add_up_cols(cl_command_queue q, size_t d, size_t k, size_t skip,
-			size_t n, cl_mem mat, cl_mem out) {
-  size_t max_wgs;
-  if(clGetKernelWorkGroupInfo(add_cols, NULL, CL_KERNEL_WORK_GROUP_SIZE,
-			      sizeof(size_t), &max_wgs, NULL) != CL_SUCCESS)
-    fprintf(stderr, "Error reading info.\n"), exit(1);
-  if(d/2 <= max_wgs) {
-    size_t foo[3] = {n, k - skip, d/2}, bar[3] = {1, 1, d/2};
-    cl_kernel tk = clone_kernel(add_cols);
-    ska(tk, 0, d);
-    ska(tk, 1, k);
-    ska(tk, 2, skip);
-    ska(tk, 3, mat);
-    ska(tk, 4, out);
-    clEnqueueNDRangeKernel(q, tk, 3, NULL, foo, bar, 0, NULL, NULL);
-    clReleaseKernel(tk);
-  } else {
-    size_t kms = k - skip;
-#ifndef SUPPORT_OPENCL_V1_2
-    cl_kernel t0 = clone_kernel(add_cols_step);
-    ska(t0, 0, d);
-    ska(t0, 2, kms);
-    ska(t0, 3, mat);
-#endif
-    for(size_t l = d; l >> 1; l >>= 1) {
-#ifdef SUPPORT_OPENCL_V1_2
-      cl_kernel tk = clone_kernel(add_cols_step);
-      ska(tk, 0, d);
-      ska(tk, 2, kms);
-      ska(tk, 3, mat);
-#else
-      cl_kernel tk = clone_kernel(t0);
-#endif
-      ska(tk, 1, l);
-      enqueue3D(q, tk, n, k - skip, l / 2);
-    }
-#ifndef SUPPORT_OPENCL_V1_2
-    clReleaseKernel(t0);
-#endif
-    enqueueFinAC(q, d, k, skip, mat, out, n);
-  }
+static cl_kernel cr_add_rows_step_n(size_t h, size_t l, cl_mem r) {
+  cl_kernel k = clone_kernel(add_rows_step_n);
+  ska(k, 0, h);
+  ska(k, 1, l);
+  ska(k, 2, r);
+  return(k);
 }
-
-static void do_sort(cl_command_queue q, size_t k, size_t n,
-		    cl_mem along, cl_mem order) {
-  size_t max_wgs;
-  if(clGetKernelWorkGroupInfo(sort_two, NULL, CL_KERNEL_WORK_GROUP_SIZE,
-			      sizeof(size_t), &max_wgs, NULL) != CL_SUCCESS)
-    fprintf(stderr, "Error reading info.\n"), exit(1);
-  int lk = lg(k);
-  size_t nth = (size_t)1 << max(lk - 4, 0);
-  if(nth <= max_wgs) {
-    size_t foo[2] = {n, nth}, bar[2] = {1, nth};
-    cl_kernel tk = clone_kernel(sort_two);
-    ska(tk, 0, k);
-    ska(tk, 1, along);
-    ska(tk, 2, order);
-    clEnqueueNDRangeKernel(q, tk, 2, NULL, foo, bar, 0, NULL, NULL);
-    clReleaseKernel(tk);
-  } else {
-#ifndef SUPPORT_OPENCL_V1_2
-    cl_kernel t0 = clone_kernel(sort_two_step);
-    ska(t0, 0, k);
-    ska(t0, 3, along);
-    ska(t0, 4, order);
-    for(int s = 0; s < lk; s++) {
-      cl_kernel t1 = clone_kernel(t0);
-      ska(t1, 1, s);
-      for(int ss = s; ss >= 0; ss--) {
-	cl_kernel tk = clone_kernel(t1);
-	ska(tk, 2, ss);
-	enqueue2D(q, tk, n, nth);
-      }
-      clReleaseKernel(t1);
-    }
-    clReleaseKernel(t0);
-#else
-  for(int s = 0; s < lk; s++)
-    for(int ss = s; ss >= 0; ss--) {
-          cl_kernel tk = clone_kernel(sort_two_step);
-	  ska(tk, 0, k);
-	  ska(tk, 1, s);
-	  ska(tk, 2, ss);
-	  ska(tk, 3, along);
-	  ska(tk, 4, order);
-	  enqueue2D(q, tk, n, nth);
-    }
-#endif
-  }
-}
-		      
 static cl_kernel cr_divide_by_length(size_t len, cl_mem r) {
   cl_kernel k = clone_kernel(divide_by_length);
   ska(k, 0, len);
@@ -462,6 +295,15 @@ static cl_kernel cr_apply_perm_inv(size_t hb, size_t ha,
   ska(k, 4, r);
   return(k);
 }
+
+static cl_kernel cr_apply_walsh_step(size_t l, size_t i, cl_mem a) {
+  cl_kernel k = clone_kernel(apply_walsh_step);
+  ska(k, 0, l);
+  ska(k, 1, i);
+  ska(k, 2, a);
+  return(k);
+}
+
 static cl_kernel cr_compute_diffs_squared(size_t d, size_t c,
 					  size_t n, size_t s,
 					  cl_mem w, cl_mem pa,
@@ -477,6 +319,29 @@ static cl_kernel cr_compute_diffs_squared(size_t d, size_t c,
   ska(k, 7, dr);
   return(k);
 }
+
+static cl_kernel cr_add_cols_step(size_t h, size_t s,
+				  size_t k, cl_mem m) {
+  cl_kernel kk = clone_kernel(add_cols_step);
+  ska(kk, 0, h);
+  ska(kk, 1, s);
+  ska(kk, 2, k);
+  ska(kk, 3, m);
+  return(kk);
+}
+
+static cl_kernel cr_sort_two_step(size_t c, size_t s,
+				  size_t ss, cl_mem a,
+				  cl_mem o) {
+  cl_kernel k = clone_kernel(sort_two_step);
+  ska(k, 0, c);
+  ska(k, 1, s);
+  ska(k, 2, ss);
+  ska(k, 3, a);
+  ska(k, 4, o);
+  return(k);
+}
+
 static cl_kernel cr_rdups(size_t c, cl_mem a, cl_mem o) {
   cl_kernel k = clone_kernel(rdups);
   ska(k, 0, c);
@@ -550,10 +415,7 @@ static void waitForQueueThenCall(cl_command_queue q,
 #define LOOP2(q, a, x, y) enqueue2D(q, cr_ ## a, x, y)
 #define LOOP3(q, a, x, y, z) enqueue3D(q, cr_ ## a, x, y, z)
 
-#define AddUpRows add_up_rows
-#define AddUpCols add_up_cols
-#define Walsh walsh
-#define DoSort do_sort
+#define fin_add_cols enqueueFinAC
 #define BUFTYPE(t) cl_mem
 #define relMem clReleaseMemObject
 #define relMemU clReleaseMemObject
