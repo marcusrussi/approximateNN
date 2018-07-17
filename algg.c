@@ -1,7 +1,6 @@
 #include "ann.h"
 #include "rand_pr.h"
 #include "gpu_comp.h"
-#include <OpenCL/opencl.h>
 
 #include <stdio.h>
 #include <sys/stat.h>
