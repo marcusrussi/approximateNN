@@ -24,7 +24,7 @@ clean:
 algc.o: ocl2c.h compute.cl rand_pr.h ann.h alg.c
 
 algg.c: alggp.c compute.cl
-	sed <compute.cl >foo 's/.*/"&\\n",/'
+	sed <compute.cl >foo -e 's/.*/"&\\n"/' -e '$$!s/$$/,/'
 	sed <alggp.c >algg.c -e '/INSERT_COMP_HERE/r foo' \
 			     -e '/INSERT_COMP_HERE/d' \
 			     -e "s/LINE_COUNT_OCL/$(shell wc -l <compute.cl)/"
