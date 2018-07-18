@@ -8,7 +8,7 @@ static const double max_long_p1 = (double)ULONG_MAX + 1;
 #define rand_dbl() ((double)(unsigned long)random() / max_long_p1)
 
 void rand_rot(size_t rotlen, size_t d,
-	      size_t *is, size_t *js, double *as) {
+	      size_t *is, size_t *js, ftype *as) {
   size_t *arr = rand_perm(rotlen * 2, d);
   for(size_t i = 0; i < rotlen; i++)
     is[i] = arr[2 * i], js[i] = arr[2 * i + 1], as[i] = rand_dbl() * M_PI;

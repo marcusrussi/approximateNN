@@ -225,7 +225,7 @@ __kernel void compute_signs(const size_t d,
   size_t x = get_global_id(0);
   size_t r = 0;
   for(size_t i = 0; i < d; i++)
-    r = r << 1 | (as_i_ftype(points[x * d + i]) >> 63);
+    r = r << 1 | (as_i_ftype(points[x * d + i]) >> (sizeof(ftype) * 8 - 1));
   results[x] = r;
 }
 
