@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
     precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 0);
     if(progress)
       printf("Precomputation finished.\n");
-    double *y = malloc(sizeof(ftype) * ycnt * d);
+    ftype *y = malloc(sizeof(ftype) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff, *other;
       genRand(ycnt, d, y);

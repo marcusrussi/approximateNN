@@ -7,7 +7,7 @@
 #include <time.h>
 #include "gpu_comp.h"
 
-void genRand(size_t n, size_t d, double *points) {
+void genRand(size_t n, size_t d, ftype *points) {
   for(size_t i = 0; i < n * d; i++)
     points[i] = rand_norm();
 }
