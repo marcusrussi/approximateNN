@@ -7,7 +7,9 @@ into pure C or usage of the OpenCL API.
 `algc.c` contains the code to turn the algorithm into pure C;
 `algc.h` contains extern declarations for `precomp_cpu` and `query_cpu`.
 
-`algg.c` contains the code to cause the algorithm to use the OpenCL API.
+`alggp.c` contains the code to cause the algorithm to use the OpenCL API.
+(It won't compile directly; first the contents of `compute.cl`
+must be interpolated -- see the makefile for how.)
 `algg.h` contains extern declarations for `precomp_gpu` and `query_gpu`.
 
 `algorithm.txt` is a very weird pseudocode version of the algorithm.
@@ -21,8 +23,7 @@ and a declaration of a function to free a `save_t`.
 `compare_results.c` is a test to ensure that the OpenCL and pure C versions 
 give the same result.
 
-`compute.cl` contains the OpenCL code; it must be
-in the working directory when running the OpenCL version.
+`compute.cl` contains the OpenCL code.
 
 `ftype.h` contains code to enable easy switching between float and double
 (separate compilation necessary).

@@ -93,18 +93,15 @@ static void setup(void) {
   if(c)
     return;
   c = 1;
-  FILE *ocl_src = fopen("compute.cl", "r");
-  struct stat ocl_stt;
-  stat("compute.cl", &ocl_stt);
-  size_t len = ocl_stt.st_size;
-  char *src_full[3] = { "#define ftype " XSTR(ftype) "\n",
-			"#define as_i_ftype as_u" XSTR(i_ftype) "\n",
-			malloc(len + 1) };
-  fread(src_full[2], 1, len, ocl_src);
-  fclose(ocl_src);
-  src_full[2][len] = 0;
+  // LINE_COUNT_OCL is replaced by length of compute.cl.
+  char *src_full[LINE_COUNT_OCL + 2] = {
+    "#define ftype " XSTR(ftype) "\n",
+    "#define as_i_ftype as_u" XSTR(i_ftype) "\n",
+    INSERT_COMP_HERE // this line is replaced by the contents of compute.cl
+  };
   cl_int error;
-  compute = clCreateProgramWithSource(gpu_context, 3, (const char **)src_full,
+  compute = clCreateProgramWithSource(gpu_context, LINE_COUNT_OCL + 2,
+				      (const char **)src_full,
 				      NULL, &error);
   if(error != CL_SUCCESS) {
     fprintf(stderr, "Error loading OpenCL code.\n");
