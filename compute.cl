@@ -101,7 +101,6 @@ __kernel void apply_perm_inv(const size_t height_pre,
 __kernel void apply_walsh_step(const size_t lheight,
 			       const size_t step,
 			       __global ftype *a) {
-  ftype rsr = rsqrt(2.0);
   size_t x = get_global_id(0) << lheight, y = get_global_id(1);
   if(!lheight)
     return;
@@ -115,9 +114,11 @@ __kernel void apply_walsh_step(const size_t lheight,
       a[ca] = (alpha + beta) / (step % 2 + 1);
       a[cb] = (alpha - beta) / (step % 2 + 1);
   }
-  if(step == 0 && lheight % 2)
+  if(step == 0 && lheight % 2) {
+    ftype rsr = rsqrt(2.0);
     for(int j = 0; j < 16 && j < 1 << lheight; j++)
       a[x | y << 4 | j] *= rsr;
+  }
 }
  
 // dims: each point is d-dimensional

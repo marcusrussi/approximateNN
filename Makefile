@@ -42,13 +42,13 @@ $(TEST_OFILES): ann.h randNorm.h gpu_comp.h
 time_results.o: timing.h
 
 time_results: time_results.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm -lOpenCL $^
+	cc -o $@ -lOpenCL $^
 
 test_correctness: test_correctness.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm -lOpenCL $^
+	cc -o $@ -lOpenCL $^
 
 compare_results: compare_results.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm -lOpenCL $^
+	cc -o $@ -lOpenCL $^
 
 .INTERMEDIATE: $(FAKE_FILES)
 
