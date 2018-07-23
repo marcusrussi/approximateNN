@@ -33,10 +33,10 @@ $(TEST_OFILES): ann.h randNorm.h
 time_results.o: timing.h
 
 time_results: time_results.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm $^
+	cc -o $@ $^
 
 test_correctness: test_correctness.o $(LIB_OFILES) randNorm.o
-	cc -o $@ -lm $^
+	cc -o $@ $^
 
 .INTERMEDIATE: $(FAKE_HFILES)
 
