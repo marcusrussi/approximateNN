@@ -94,13 +94,18 @@ static void setup(void) {
     return;
   c = 1;
   // LINE_COUNT_OCL is replaced by length of compute.cl.
-  char *src_full[LINE_COUNT_OCL + 2] = {
+  char *src_full[LINE_COUNT_OCL + 3] = {
     "#define ftype " XSTR(ftype) "\n",
     "#define as_i_ftype as_u" XSTR(i_ftype) "\n",
+    "#define size_t usomethingorother",
     INSERT_COMP_HERE // this line is replaced by the contents of compute.cl
   };
+  sprintf(src_full[2], "#define size_t u%s\n", 
+    sizeof(size_t) == 1? "char" :
+    sizeof(size_t) == 2? "short" :
+    sizeof(size_t) == 4? "int" : "long");
   cl_int error;
-  compute = clCreateProgramWithSource(gpu_context, LINE_COUNT_OCL + 2,
+  compute = clCreateProgramWithSource(gpu_context, LINE_COUNT_OCL + 3,
 				      (const char **)src_full,
 				      NULL, &error);
   if(error != CL_SUCCESS) {
