@@ -97,13 +97,10 @@ static void setup(void) {
   char *src_full[LINE_COUNT_OCL + 3] = {
     "#define ftype " XSTR(ftype) "\n",
     "#define as_i_ftype as_u" XSTR(i_ftype) "\n",
-    "#define size_t usomethingorother",
+    (sizeof(size_t) == 8? "#define size_t ulong\n" : 
+     "#define size_t uint\n"),
     INSERT_COMP_HERE // this line is replaced by the contents of compute.cl
   };
-  sprintf(src_full[2], "#define size_t u%s\n", 
-    sizeof(size_t) == 1? "char" :
-    sizeof(size_t) == 2? "short" :
-    sizeof(size_t) == 4? "int" : "long");
   cl_int error;
   compute = clCreateProgramWithSource(gpu_context, LINE_COUNT_OCL + 3,
 				      (const char **)src_full,
@@ -133,7 +130,6 @@ static void setup(void) {
   create_kernel(compute, apply_walsh_step);
   create_kernel(compute, compute_diffs_squared);
   create_kernel(compute, add_cols_step);
-  create_kernel(compute, add_cols_fin);
   create_kernel(compute, sort_two_step);
   create_kernel(compute, rdups);
   create_kernel(compute, compute_signs);
