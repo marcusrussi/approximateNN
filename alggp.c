@@ -33,24 +33,7 @@ static unsigned lg(size_t d) {
 #define max(a, b) ((a) < (b)?b:(a))
 
 cl_program compute;
-#ifdef SUPPORT_OPENCL_V1_2
 #define clone_kernel(src) make_kernel(compute, #src);
-#else
-static cl_kernel add_rows_step_0, add_rows_step_n, divide_by_length,
-  subtract_off, apply_rotation, apply_permutation, apply_perm_inv,
-  apply_walsh_step, compute_diffs_squared, add_cols_step, add_cols_fin,
-  sort_two_step, rdups, compute_signs, compute_which, supercharge, prods;
-
-static cl_kernel clone_kernel(cl_kernel src) {
-  cl_int err;
-  cl_kernel dst = clCloneKernel(src, &err);
-  if(err != CL_SUCCESS)
-    fprintf(stderr, "Error cloning kernel.\n"), exit(1);
-  return(dst);
-}
-#endif
-
-#define create_kernel(p, x) x = make_kernel(p, #x)
 
 static cl_kernel make_kernel(cl_program p, const char *xn) {
   cl_int err;
@@ -67,25 +50,6 @@ static void teardown(void) {
   if(!c)
     return;
   c = 0;
-#ifndef SUPPORT_OPENCL_V1_2
-  clReleaseKernel(add_rows_step_0);
-  clReleaseKernel(add_rows_step_n);
-  clReleaseKernel(divide_by_length);
-  clReleaseKernel(subtract_off);
-  clReleaseKernel(apply_rotation);
-  clReleaseKernel(apply_permutation);
-  clReleaseKernel(apply_perm_inv);
-  clReleaseKernel(apply_walsh_step);
-  clReleaseKernel(compute_diffs_squared);
-  clReleaseKernel(add_cols_step);
-  clReleaseKernel(add_cols_fin);
-  clReleaseKernel(sort_two_step);
-  clReleaseKernel(rdups);
-  clReleaseKernel(compute_signs);
-  clReleaseKernel(compute_which);
-  clReleaseKernel(supercharge);
-  clReleaseKernel(prods);
-#endif
   clReleaseProgram(compute);
 }
 static void setup(void) {
@@ -119,24 +83,6 @@ static void setup(void) {
     fprintf(stderr, "Error building program.\n");
     exit(1);
   }
-#ifndef SUPPORT_OPENCL_V1_2
-  create_kernel(compute, add_rows_step_0);
-  create_kernel(compute, add_rows_step_n);
-  create_kernel(compute, divide_by_length);
-  create_kernel(compute, subtract_off);
-  create_kernel(compute, apply_rotation);
-  create_kernel(compute, apply_permutation);
-  create_kernel(compute, apply_perm_inv);
-  create_kernel(compute, apply_walsh_step);
-  create_kernel(compute, compute_diffs_squared);
-  create_kernel(compute, add_cols_step);
-  create_kernel(compute, sort_two_step);
-  create_kernel(compute, rdups);
-  create_kernel(compute, compute_signs);
-  create_kernel(compute, compute_which);
-  create_kernel(compute, supercharge);
-  create_kernel(compute, prods);
-#endif
   register_cleanup(teardown);
 }
 
