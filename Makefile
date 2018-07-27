@@ -7,7 +7,7 @@ FAKE_HFILES := time_results.h test_correctness.h
 WARNS := -Wall -Wextra -Wpedantic
 OS := $(shell uname -s)
 # Toss the end of this next line if using OpenCL 2.x.
-OCL_OPT := -DSUPPORT_OPENCL_V1_2
+OCL_OPT := 
 
 ifeq ("$(OS)", "Darwin")
 	OSOPT := -DOSX
@@ -33,10 +33,10 @@ $(TEST_OFILES): ann.h randNorm.h
 time_results.o: timing.h
 
 time_results: time_results.o $(LIB_OFILES) randNorm.o
-	cc -o $@ $^
+	cc -o $@ $^ -lm
 
 test_correctness: test_correctness.o $(LIB_OFILES) randNorm.o
-	cc -o $@ $^
+	cc -o $@ $^ -lm
 
 .INTERMEDIATE: $(FAKE_HFILES)
 
