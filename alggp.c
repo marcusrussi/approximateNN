@@ -327,8 +327,8 @@ static cl_kernel cr_add_cols_step(size_t h, size_t s,
   return(kk);
 }
 
-static cl_kernel cr_sort_two_step(size_t c, size_t s,
-				  size_t ss, cl_mem a,
+static cl_kernel cr_sort_two_step(size_t c, int s,
+				  int ss, cl_mem a,
 				  cl_mem o) {
   cl_kernel k = clone_kernel(sort_two_step);
   ska(k, 0, c);
