@@ -3,7 +3,7 @@
 #include <limits.h>
 #include <math.h>
 
-static const double max_long_p1 = (double)ULONG_MAX + 1;
+static const double max_long_p1 = (double)RAND_MAX + 1;
 
 #define rand_dbl() ((double)(unsigned long)random() / max_long_p1)
 
