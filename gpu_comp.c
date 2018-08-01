@@ -35,11 +35,14 @@ void gpu_init(void) {
   }
   cl_device_type devtypes[2] =
     { CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR, CL_DEVICE_TYPE_CPU };
-  for(int qq = 0; qq < 2; qq++)
+  for(int qq = 1; qq < 2; qq++)
     for(cl_uint i = 0; i < nplat; i++) {
       cl_uint ndev;
-      if(clGetDeviceIDs(plats[i], devtypes[qq],
-			0, NULL, &ndev) != CL_SUCCESS) {
+      cl_int err;
+      if((err = clGetDeviceIDs(plats[i], devtypes[qq],
+			       0, NULL, &ndev)) != CL_SUCCESS) {
+	if(err != CL_DEVICE_NOT_FOUND)
+	  continue;
 	fprintf(stderr, "Error running clGetDeviceIDs.\n");
 	exit(1);
       }

@@ -58,13 +58,14 @@ static void setup(void) {
     return;
   c = 1;
   // LINE_COUNT_OCL is replaced by length of compute.cl.
-  char *src_full[LINE_COUNT_OCL + 3] = {
-    "#define ftype " XSTR(ftype) "\n",
-    "#define as_i_ftype as_u" XSTR(i_ftype) "\n",
-    (sizeof(size_t) == 8? "#define size_t ulong\n" : 
-     "#define size_t uint\n"),
-    INSERT_COMP_HERE // this line is replaced by the contents of compute.cl
-  };
+  static char *src_full[LINE_COUNT_OCL + 3] =
+    {
+     "#define ftype " XSTR(ftype) "\n",
+     "#define as_i_ftype as_u" XSTR(i_ftype) "\n",
+     (sizeof(size_t) == 8? "#define size_t ulong\n" : 
+      "#define size_t uint\n"),
+     INSERT_COMP_HERE // this line is replaced by the contents of compute.cl
+    };
   cl_int error;
   compute = clCreateProgramWithSource(gpu_context, LINE_COUNT_OCL + 3,
 				      (const char **)src_full,
