@@ -302,7 +302,7 @@ size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
 		  size_t n, size_t k, size_t d, size_t ycnt, size_t len,
 		  BUFTYPE(size_t) pointers, BUFTYPE(ftype) dists,
 		  BUFTYPE(const size_t) graph, BUFTYPE(const ftype) y,
-		  BUFTYPE(const ftype) points) {
+		  BUFTYPE(const ftype) points, ftype **dists_o) {
   if(dists == NULL) {
     dists = MK_BUF_RW_NA(c, ftype, len * ycnt);
     TWO_GONLY(compdists, c, q, n, len, d, ycnt, 0, y, points, pointers, dists);
@@ -323,6 +323,10 @@ size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
   TWO_GONLY(compdists, c, q, n, k * (k + 1), d, ycnt, k,
 	    y, points, pointers, dists);
   FST_GONLY(sort_and_uniq, q, ycnt, k * (k + 1), pointers, dists);
+  if(dists_o != NULL) {
+    dists_o = malloc(sizeof(ftype) * ycnt * k);
+    enqueueRead2D(q, ftype, k * (k + 1), k, 0, dists, dists_o, ycnt, k);
+  }
   relMem(dists);
   size_t *results = malloc(sizeof(size_t) * ycnt * k);
   enqueueRead2D(q, size_t, k * (k + 1), k, 0, pointers, results, ycnt, k);
@@ -336,7 +340,7 @@ size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
 size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const ftype *points,
 			  int tries, size_t rots_before, size_t rot_len_before,
 			  size_t rots_after, size_t rot_len_after,
-			  save_t *save) {
+			  save_t *save, ftype **dists_o) {
   setup();
   size_t d_short = ceil(log2((ftype)n / k));
   size_t d_max = d - 1;
@@ -413,7 +417,7 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const ftype *points,
   size_t *fedges = TWO_GONLY(det_results, gpu_context, q,
 			     n, k, d, n, k * tries,
 			     pointers_out, dists_out,
-			     pointers_out, pnts2, pnts2);
+			     pointers_out, pnts2, pnts2, dists_o);
   relMemU(pnts2);
   if(save != NULL)
     save->graph = fedges;
@@ -447,7 +451,7 @@ void TWO_GONLY(shufcomp, cl_context c, cl_command_queue q, size_t d,
 // save->which_par (tries, then 1 << d_short by save->par_maxes[i]),
 // save->bases (tries by d_short by d_long), y (ycnt by d_long).
 size_t *MK_NAME(query) (const save_t *save, const ftype *points,
-			size_t ycnt, const ftype *y) {
+			size_t ycnt, const ftype *y, ftype **dists_o) {
   setup();
   MAKE_COMMAND_QUEUE(gpu_context, the_gpu, NULL, NULL, q);
   BUFTYPE(ftype) y2 = MK_BUF_COPY_RW_NA(gpu_context, ftype,
@@ -462,7 +466,6 @@ size_t *MK_NAME(query) (const save_t *save, const ftype *points,
   BUFTYPE(ftype) cprds = MK_BUF_RW_NA(gpu_context, ftype,
 				       save->tries * ycnt *
 				       save->d_short * save->d_long);
-  // WHY IS THIS CAUSING SEGFAULTS IN OPENCL BUT NOT C?
   LOOP3(q, prods(save->d_long, save->tries * save->d_short, y2, bases, cprds),
 	ycnt, save->tries * save->d_short, save->d_long);
   relMemU(bases);
@@ -501,7 +504,7 @@ size_t *MK_NAME(query) (const save_t *save, const ftype *points,
   size_t *ans = TWO_GONLY(det_results, gpu_context, q,
 			  save->n, save->k, save->d_long, ycnt,
 			  msofar * (save->d_short + 1), ipts, NULL,
-			  graph, y3, pnts);
+			  graph, y3, pnts, dists_o);
   relMemU(y3);
   relMemU(pnts);
   relMemU(graph);

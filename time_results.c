@@ -81,10 +81,11 @@ int main(int argc, char **argv) {
     }
   double time_used = 0;
   ftype *points = malloc(sizeof(ftype) * n * d);
+  ftype *dists;
   if(ycnt) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 1);
+    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL, 1);
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
@@ -93,9 +94,10 @@ int main(int argc, char **argv) {
       tval start, end;
       genRand(ycnt, d, y);
       gettm(start);
-      stuff = query(&save, points, ycnt, y, 1);
+      stuff = query(&save, points, ycnt, y, &dists, 1);
       gettm(end);
       free(stuff);
+      free(dists);
       time_used += td(start, end);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
@@ -110,12 +112,13 @@ int main(int argc, char **argv) {
       genRand(n, d, points);
       gettm(start);
       stuff = precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-		      save_test? &save : NULL, 1);
+		      save_test? &save : NULL, &dists, 1);
       gettm(end);
       if(save_test)
 	free_save(&save);
       else
 	free(stuff);
+      free(dists);
       time_used += td(start, end);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);

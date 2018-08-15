@@ -91,14 +91,14 @@ int main(int argc, char **argv) {
   if(use_y) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 1);
+    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL, 1);
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff;
       genRand(ycnt, d, y);
-      stuff = query(&save, points, ycnt, y, 1);
+      stuff = query(&save, points, ycnt, y, NULL, 1);
       score += compute_score_query(n, k, d, ycnt, points, y, stuff,
 				   &scb, &scc);
       free(stuff);
@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
       size_t *stuff;
       genRand(n, d, points);
       stuff = precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-		      NULL, 1);
+		      NULL, NULL, 1);
       score += compute_score(n, k, d, points, stuff, &scb, &scc);
       free(stuff);
       if(progress)

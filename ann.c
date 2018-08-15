@@ -4,17 +4,17 @@
 #include <stdlib.h>
 
 size_t *query(const save_t *save, const ftype *points,
-	      size_t ycnt, const ftype *y, char use_cpu) {
+	      size_t ycnt, const ftype *y, ftype **dists, char use_cpu) {
   assert(use_cpu && "CPU usage required if compiled for CPU only");
-  return(query_cpu(save, points, ycnt, y));
+  return(query_cpu(save, points, ycnt, y, dists));
 }
 size_t *precomp(size_t n, size_t k, size_t d, const ftype *points,
 		int tries, size_t rots_before, size_t rot_len_before,
 		size_t rots_after, size_t rot_len_after, save_t *save,
-		char use_cpu) {
+		ftype **dists, char use_cpu) {
   assert(use_cpu && "CPU usage required if compiled for CPU only");
   return(precomp_cpu(n, k, d, points, tries, rots_before, rot_len_before,
-		     rots_after, rot_len_after, save));
+		     rots_after, rot_len_after, save, dists));
 }
 
 void free_save(save_t *save) {

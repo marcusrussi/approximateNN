@@ -4,10 +4,8 @@ LIB_OFILES := algc.o rand_pr.o ann.o
 TEST_OFILES := time_results.o test_correctness.o
 OFILES := $(LIB_OFILES) randNorm.o $(TEST_OFILES)
 FAKE_HFILES := time_results.h test_correctness.h
-WARNS := -Wall -Wextra -Wpedantic
+WARNS := -Wall -Wextra -Wpedantic -Wno-unused-parameter
 OS := $(shell uname -s)
-# Toss the end of this next line if using OpenCL 2.x.
-OCL_OPT := 
 
 ifeq ("$(OS)", "Darwin")
 	OSOPT := -DOSX
@@ -44,4 +42,4 @@ $(FAKE_HFILES): %.h:
 	touch $@
 
 $(OFILES): %.o: %.c %.h ftype.h
-	cc -c -g $(OSOPT) $(OCL_OPT) $(WARNS) $<
+	cc -c -g $(OSOPT) $(WARNS) $<
