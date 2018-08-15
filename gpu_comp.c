@@ -15,7 +15,6 @@ static char init = 0;
 void diequick(const char *errinfo, const void *a,
 		      size_t b, void *c) {
   fprintf(stderr, "Error on GPU: %s", errinfo);
-  a = a; b = b; c = c;
   exit(1);
 }
 

@@ -98,15 +98,15 @@ int main(int argc, char **argv) {
   if(use_y) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, 0);
+    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL, 0);
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
     for(size_t i = 0; i < average_over; i++) {
       size_t *stuff, *other;
       genRand(ycnt, d, y);
-      stuff = query(&save, points, ycnt, y, 0);
-      other = query(&save, points, ycnt, y, 1);
+      stuff = query(&save, points, ycnt, y, NULL, 0);
+      other = query(&save, points, ycnt, y, NULL, 1);
       score += diffcount(ycnt, k, stuff, other);
       free(stuff);
       free(other);
@@ -123,10 +123,10 @@ int main(int argc, char **argv) {
       fread(&foo, sizeof(unsigned), 1, randomf);
       srandom(foo);
       precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-	      &stuff, 0);
+	      &stuff, NULL, 0);
       srandom(foo);
       precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-	      &other, 1);
+	      &other, NULL, 1);
       score += cdiff_save(&stuff, &other);
       free_save(&stuff);
       free_save(&other);

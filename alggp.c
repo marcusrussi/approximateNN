@@ -32,6 +32,14 @@ static unsigned lg(size_t d) {
 
 #define max(a, b) ((a) < (b)?b:(a))
 
+static cl_mem checkedBC(cl_context c, cl_mem_flags f, size_t sz, void *hp) {
+  cl_int err;
+  cl_mem buf = clCreateBuffer(c, f, sz, hp, &err);
+  if(err != CL_SUCCESS)
+    fprintf(stderr, "Error creating buffer: %i\n", err), exit(1);
+  return(buf);
+}
+
 cl_program compute;
 #define clone_kernel(src) make_kernel(compute, #src);
 
@@ -52,6 +60,7 @@ static void teardown(void) {
   c = 0;
   clReleaseProgram(compute);
 }
+
 static void setup(void) {
   gpu_init();
   if(c)
@@ -140,7 +149,7 @@ static void rd2D(cl_command_queue q,
 			     s, height_pre * s,
 			     s, height_post * s,
 			     to, 0, NULL, NULL) != CL_SUCCESS)
-    fprintf(stderr, "Failed enqueue of copy.\n"), exit(1);
+    fprintf(stderr, "Failed enqueue of read.\n"), exit(1);
 }
 
 #define enqueueRead2D(q, t, ...) rd2D(q, __VA_ARGS__, sizeof(t))
@@ -163,11 +172,13 @@ static void enqueueFinAC(cl_command_queue q, size_t height, size_t k,
   size_t src_ori[3] = {0, 0, 0};
   size_t dst_ori[3] = {0, skip, 0};
   size_t reg[3] = {sizeof(ftype), k - skip, n};
-  if(clEnqueueCopyBufferRect(q, from, to, src_ori, dst_ori, reg,
-			     sizeof(ftype) * height, 0,
-			     0, sizeof(ftype) * k,
-			     0, NULL, NULL) != CL_SUCCESS)
-    fprintf(stderr, "Failed enqueue of copy.\n"), exit(1);
+  cl_int err;
+  if((err = clEnqueueCopyBufferRect(q, from, to, src_ori, dst_ori, reg,
+			     sizeof(ftype) * height,
+			     sizeof(ftype) * height * (k - skip),
+			     sizeof(ftype), sizeof(ftype) * k,
+				    0, NULL, NULL)) != CL_SUCCESS)
+    fprintf(stderr, "Failed enqueue of copy: %i\n", err), exit(1);
 }
 
 #define ska(k, i, o) setKerArg(k, i, sizeof(o), &o)
@@ -364,23 +375,23 @@ static void waitForQueueThenCall(cl_command_queue q,
 #define relMem clReleaseMemObject
 #define relMemU clReleaseMemObject
 #define MK_BUF_COPY_RW_NA(cont, type, sz, src) \
-    clCreateBuffer(cont, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR | \
-		   CL_MEM_HOST_NO_ACCESS, sizeof(type) * (sz), \
-		   (void *)src, NULL)
+    checkedBC(cont, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR | \
+	      CL_MEM_HOST_NO_ACCESS, sizeof(type) * (sz),      \
+	      (void *)src)
 #define MK_BUF_COPY_RO_NA(cont, type, sz, src) \
-    clCreateBuffer(cont, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR | \
+    checkedBC(cont, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR | \
 		   CL_MEM_HOST_NO_ACCESS, sizeof(type) * (sz), \
-		   (void *)src, NULL)
+		   (void *)src)
 #define MK_BUF_USE_RO_NA(cont, type, sz, src) \
-    clCreateBuffer(cont, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR | \
+    checkedBC(cont, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR | \
 		   CL_MEM_HOST_NO_ACCESS, sizeof(type) * (sz), \
-		   (void *)src, NULL)
+		   (void *)src)
 #define MK_BUF_RW_NA(cont, type, sz)			    \
-    clCreateBuffer(cont, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, \
-		   sizeof(type) * (sz), NULL, NULL)
+    checkedBC(cont, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, \
+		   sizeof(type) * (sz), NULL)
 #define MK_BUF_RW_RO(cont, type, sz) \
-    clCreateBuffer(cont, CL_MEM_READ_WRITE | CL_MEM_HOST_READ_ONLY, \
-		   sizeof(type) * (sz), NULL, NULL)
+    checkedBC(cont, CL_MEM_READ_WRITE | CL_MEM_HOST_READ_ONLY, \
+		   sizeof(type) * (sz), NULL)
 #define MK_SUBBUF_RO_NA_REG(t, b, o, s) subbuf(b, (o) * sizeof(t), \
 					       (s) * sizeof(t))
 #define TYPE_OF_COMP gpu

@@ -88,10 +88,12 @@ int main(int argc, char **argv) {
     gpu_init();
   double time_used = 0;
   ftype *points = malloc(sizeof(ftype) * n * d);
+  ftype *dists;
   if(ycnt) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, use_cpu);
+    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL,
+	    use_cpu);
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
@@ -100,9 +102,10 @@ int main(int argc, char **argv) {
       tval start, end;
       genRand(ycnt, d, y);
       gettm(start);
-      stuff = query(&save, points, ycnt, y, use_cpu);
+      stuff = query(&save, points, ycnt, y, &dists, use_cpu);
       gettm(end);
       free(stuff);
+      free(dists);
       time_used += td(start, end);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
@@ -117,12 +120,13 @@ int main(int argc, char **argv) {
       genRand(n, d, points);
       gettm(start);
       stuff = precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-		      save_test? &save : NULL, use_cpu);
+		      save_test? &save : NULL, &dists, use_cpu);
       gettm(end);
       if(save_test)
 	free_save(&save);
       else
 	free(stuff);
+      free(dists);
       time_used += td(start, end);
       if(progress)
 	printf("%zu ", i + 1), fflush(stdout);
