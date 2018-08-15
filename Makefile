@@ -42,4 +42,7 @@ $(FAKE_HFILES): %.h:
 	touch $@
 
 $(OFILES): %.o: %.c %.h ftype.h
-	cc -c -g $(OSOPT) $(WARNS) $<
+	clang -c -g $(OSOPT) $(WARNS) $<
+# CC will complain about sign comparisons where one side is unsigned var
+# and other side is positive int literal.
+# Clang won't. 
