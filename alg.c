@@ -324,7 +324,7 @@ size_t *TWO_GONLY(det_results, cl_context c, cl_command_queue q,
 	    y, points, pointers, dists);
   FST_GONLY(sort_and_uniq, q, ycnt, k * (k + 1), pointers, dists);
   if(dists_o != NULL) {
-    dists_o = malloc(sizeof(ftype) * ycnt * k);
+    *dists_o = malloc(sizeof(ftype) * ycnt * k);
     enqueueRead2D(q, ftype, k * (k + 1), k, 0, dists, *dists_o, ycnt, k);
   }
   relMem(dists);
