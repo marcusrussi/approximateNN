@@ -92,8 +92,8 @@ int main(int argc, char **argv) {
   if(ycnt) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL,
-	    use_cpu);
+    free(precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL,
+		 use_cpu));
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
@@ -124,8 +124,7 @@ int main(int argc, char **argv) {
       gettm(end);
       if(save_test)
 	free_save(&save);
-      else
-	free(stuff);
+      free(stuff);
       free(dists);
       time_used += td(start, end);
       if(progress)

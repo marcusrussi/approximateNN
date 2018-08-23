@@ -1,3 +1,5 @@
+#include <string.h>
+
 #define conc(a, b, c) a ## b ## c
 #define concb(a, b, c) conc(a, b, c)
 #define MK_NAME(x) concb(x, _, TYPE_OF_COMP)
@@ -419,12 +421,15 @@ size_t *MK_NAME(precomp) (size_t n, size_t k, size_t d, const ftype *points,
 			     pointers_out, dists_out,
 			     pointers_out, pnts2, pnts2, dists_o);
   relMemU(pnts2);
-  if(save != NULL)
-    save->graph = fedges;
   clFinish(q);
   clReleaseCommandQueue(q);
   clFinish(sq);
   clReleaseCommandQueue(sq);
+  if(save != NULL) {
+    save->graph = fedges;
+    fedges = malloc(sizeof(size_t) * n * k);
+    memcpy(fedges, save->graph, sizeof(size_t) * n * k);
+  }
   return(fedges);
 }
 

@@ -98,7 +98,8 @@ int main(int argc, char **argv) {
   if(use_y) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL, 0);
+    free(precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL,
+		 0));
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
@@ -122,11 +123,11 @@ int main(int argc, char **argv) {
       unsigned foo;
       fread(&foo, sizeof(unsigned), 1, randomf);
       srandom(foo);
-      precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-	      &stuff, NULL, 0);
+      free(precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
+		   &stuff, NULL, 0));
       srandom(foo);
-      precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
-	      &other, NULL, 1);
+      free(precomp(n, k, d, points, tries, rb, rlenb, ra, rlena,
+		   &other, NULL, 1));
       score += cdiff_save(&stuff, &other);
       free_save(&stuff);
       free_save(&other);

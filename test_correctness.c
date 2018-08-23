@@ -98,8 +98,8 @@ int main(int argc, char **argv) {
   if(use_y) {
     save_t save;
     genRand(n, d, points);
-    precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL,
-	    use_cpu);
+    free(precomp(n, k, d, points, tries, rb, rlenb, ra, rlena, &save, NULL,
+		 use_cpu));
     if(progress)
       printf("Precomputation finished.\n");
     ftype *y = malloc(sizeof(ftype) * ycnt * d);
